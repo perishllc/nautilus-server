@@ -1,4 +1,4 @@
-# Nautilus
+# Nautilus Backend Server
 
 ![Cover](https://raw.githubusercontent.com/fwd/nautilus-server/master/.github/banner.png)
 
