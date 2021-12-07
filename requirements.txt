@@ -1,0 +1,13 @@
+redis
+requests
+aioredis>=1.3.1,<2.0.0
+aiohttp 
+bitstring
+aiofcm
+python-dotenv
+pylint
+uvloop
+python-socketio==4.6.1
+websockets
+python-rapidjson
+aiohttp_cors
