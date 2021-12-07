@@ -1,14 +1,12 @@
-# Natrium (NANO) and Kalium (BANANO) Wallet Server
+# Nautilus
 
-## What is Natrium, Kalium, NANO, BANANO?
+![Cover](https://raw.githubusercontent.com/fwd/nautilus-server/master/.github/banner.png)
 
-Natrium and Kalium are mobile wallets written with Flutter. NANO and BANANO are cryptocurrencies.
+### A [Natrium](https://github.com/appditto/natrium_wallet_flutter) fork, with [Nano.to](https://github.com/formsend/nano) integration, and a few other improvements.
 
-| Link | Description |
-| :----- | :------ |
-[natrium.io](https://natrium.io) | Natrium Homepage
-[kalium.banano.cc](https://kalium.banano.cc) | Kalium Homepage
-[appditto.com](https://appditto.com) | Appditto Homepage
+## Mobile App Repos
+
+Nautilus's iOS & Android source code can be found [@fwd/nautilus](https://github.com/fwd/nautilus)
 
 ## Requirements
 
