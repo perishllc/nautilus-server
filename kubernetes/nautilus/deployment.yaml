@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: natrium-server
-  namespace: natrium
+  name: nautilus-server
+  namespace: nautilus
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: natrium-server
+      app: nautilus-server
   template:
     metadata:
       labels:
-        app: natrium-server
+        app: nautilus-server
     spec:
       containers:
-      - name: natrium-server
+      - name: nautilus-server
         image: replaceme
         resources:
           requests:

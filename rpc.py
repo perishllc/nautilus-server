@@ -13,7 +13,7 @@ allowed_rpc_actions = ["account_balance", "account_block_count", "account_check"
                        "blocks", "block_info", "blocks_info", "block_account", "block_count", "block_count_type",
                        "chain", "frontiers", "frontier_count", "history",
                        "key_expand", "process", "representatives", "republish", "peers", "version", "pending",
-                       "pending_exists", "price_data", "fcm_update", "active_difficulty"]
+                       "pending_exists", "price_data", "fcm_update", "active_difficulty", "request_payment"]
 
 class RPC:
     def __init__(self, node_url : str, banano_mode : bool, work_url : str = None, price_prefix : str = None):
@@ -121,6 +121,10 @@ class RPC:
             response['uuid'] = ws.id
             price_cur = await r.app['rdata'].hget("prices", f"{self.price_prefix}-" + r.app['cur_prefs'][ws.id].lower())
             price_btc = await r.app['rdata'].hget("prices", f"{self.price_prefix}-btc")
+            if price_cur == None:
+                price_cur = 1
+            if price_btc == None:
+                price_btc = 10
             response['currency'] = r.app['cur_prefs'][ws.id].lower()
             response['price'] = float(price_cur)
             response['btc'] = float(price_btc)

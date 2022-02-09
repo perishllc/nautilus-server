@@ -306,8 +306,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                 try:
                     if request_json['currency'].upper() in currency_list:
                         try:
-                            price = await r.app['rdata'].hget("prices",
-                                                f"{price_prefix}-" + request_json['currency'].lower())
+                            price = await r.app['rdata'].hget("prices", f"{price_prefix}-" + request_json['currency'].lower())
                             reply = json.dumps({
                                 'currency': request_json['currency'].lower(),
                                 'price': str(price)
@@ -395,6 +394,14 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         'error':'account_history rpc error',
                         'detail': str(e)
                     })
+            elif request_json['action'] == 'request_payment':
+                # todo: insecure requesting_account field :/
+                err = await push_payment_request(r, request_json["account"], request_json["amount_raw"], request_json["requesting_account"])
+                if err is not None:
+                    ret = json.dumps({
+                        'error':'fcm token error',
+                        'detail': str(err)
+                    })
             # rpc: fallthrough and error catch
             else:
                 try:
@@ -468,6 +475,7 @@ async def websocket_handler(r : web.Request):
 async def http_api(r: web.Request):
     try:
         request_json = await r.json()
+        print(request_json)
         reply = await handle_user_message(r, json.dumps(request_json))
         if reply is not None:
             return web.json_response(data=json.loads(reply))
@@ -496,6 +504,62 @@ async def callback_ws(app: web.Application, data: dict):
             if 'amount' in data:
                 log.server_logger.info(f'emitting donation event for amount: {data["amount"]}')
                 await sio.emit('donation_event', {'amount':data['amount']})
+
+async def push_payment_request(r, account, amount_raw, requesting_account):
+
+    time.sleep(1)
+    # Push FCM notification if this is a send
+    if fcm_api_key is None:
+        return "no_api_key"
+    link = account
+    send_amount = int(amount_raw)
+    
+    fcm_tokens = set(await get_fcm_tokens(link, r))
+    fcm_tokens_v2 = set(await get_fcm_tokens(link, r, v2=True))
+    if (fcm_tokens is None or len(fcm_tokens) == 0) and (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return "no_tokens"
+
+    # get username if it exists:
+    shorthand_account = await app['rdata'].hget("usernames", f"{requesting_account}")
+    if shorthand_account is None:
+        # set username to abbreviated account name:
+        shorthand_account = requesting_account[0:12]
+
+    # This is a send, push notifications
+    fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+
+    # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
+    for t in fcm_tokens:
+        message = aiofcm.Message(
+                    device_token=t,
+                    data = {
+                        "amount": str(send_amount)
+                    },
+                    priority=aiofcm.PRIORITY_HIGH
+        )
+        await fcm.send_message(message)
+    notification_title = f"Request for {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
+    notification_body = f"Open Nautilus to pay this request."
+    for t2 in fcm_tokens_v2:
+        message = aiofcm.Message(
+            device_token = t2,
+            notification = {
+                "title":notification_title,
+                "body":notification_body,
+                "sound":"default",
+                "tag": link
+            },
+            data = {
+                "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                "account": link,
+                "payment_request": True,
+                "amount_raw": str(send_amount),
+                "requesting_account": requesting_account,
+                "requesting_account_shorthand": shorthand_account
+            },
+            priority=aiofcm.PRIORITY_HIGH
+        )
+        await fcm.send_message(message)
 
 async def callback(r : web.Request):
     try:
@@ -543,7 +607,7 @@ async def callback(r : web.Request):
                 )
                 await fcm.send_message(message)
             notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'}"
-            notification_body = f"Open {'Natrium' if not banano_mode else 'Kalium'} to view this transaction."
+            notification_body = f"Open Nautilus to view this transaction."
             for t2 in fcm_tokens_v2:
                 message = aiofcm.Message(
                     device_token = t2,
