@@ -11,3 +11,4 @@ python-socketio==4.6.1
 websockets
 python-rapidjson
 aiohttp_cors
+ed25519-blake2b

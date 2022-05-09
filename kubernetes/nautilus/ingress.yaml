@@ -1,13 +1,12 @@
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nautilus-server
-  namespace: nautilus
   annotations:
     kubernetes.io/ingress.class: "nginx"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/configuration-snippet: |
-        real_ip_header CF-Connecting-IP;
+      real_ip_header CF-Connecting-IP;
     nginx.ingress.kubernetes.io/add-base-url: "true"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/websocket-services: "nautilus-server"
@@ -23,16 +22,21 @@ metadata:
           deny all;
           return 404;
       }
+    nginx.ingress.kubernetes.io/limit-rpm: "50"
+    nginx.ingress.kubernetes.io/limit-whitelist: "62.204.108.5"
 spec:
   tls:
-  - hosts:
-    - app.perish.co
-    secretName: app-perish-co-server-secret
+    - hosts:
+        - nautilusapi.perish.co
+      secretName: nautilusapi-perish-co-server-secret
   rules:
-  - host: app.perish.co
-    http:
-      paths:
-      - path: /
-        backend:
-          serviceName: nautilus-server
-          servicePort: 5076
+    - host: nautilusapi.perish.co
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nautilus-server
+                port:
+                  number: 5076

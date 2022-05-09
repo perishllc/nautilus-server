@@ -25,6 +25,11 @@ from util import Util
 from nano_websocket import WebsocketClient
 from alerts import get_active_alert
 
+# verify block signature:
+from ed25519_blake2b import BadSignatureError, SigningKey, VerifyingKey
+from binascii import hexlify, unhexlify
+
+
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # Configuration arguments
@@ -56,7 +61,7 @@ try:
         print(f'Starting KALIUM Server (BANANO) {server_desc}')
     else:
         banano_mode = False
-        print(f'Starting NATRIUM Server (NANO) {server_desc}')
+        print(f'Starting NAUTILUS Server (NANO) {server_desc}')
 except Exception as e:
     parser.print_help()
     sys.exit(0)
@@ -70,12 +75,17 @@ work_url = os.getenv('WORK_URL', None)
 fcm_api_key = os.getenv('FCM_API_KEY', None)
 fcm_sender_id = os.getenv('FCM_SENDER_ID', None)
 debug_mode = True if int(os.getenv('DEBUG', 1)) != 0 else False
+nonce_timeout_seconds = int(os.getenv('NONCE_TIMEOUT', 100))
 
 # Objects
 
 loop = asyncio.get_event_loop()
 rpc = RPC(rpc_url, banano_mode, work_url=work_url, price_prefix=price_prefix)
 util = Util(banano_mode)
+
+# a complete hack for mocking structs to pass to functions:
+class Object(object):
+    pass
 
 # all currency conversions that are available
 currency_list = ["BTC", "ARS", "AUD", "BRL", "CAD", "CHF", "CLP", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR",
@@ -160,6 +170,7 @@ async def get_fcm_tokens(account : str, r : web.Request, v2 : bool = False) -> l
 # Primary handler for all websocket connections
 async def handle_user_message(r : web.Request, message : str, ws : web.WebSocketResponse = None):
     """Process data sent by client"""
+    print(message)
     address = util.get_request_ip(r)
     uid = ws.id if ws is not None else '0'
     now = int(round(time.time() * 1000))
@@ -259,13 +270,11 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                             await r.app['rdata'].hset(uid, "account", json.dumps(account_list))
                         await rpc.rpc_reconnect(ws, r, account)
                         # Store FCM token for this account, for push notifications
-                        if 'fcm_token' in request_json:
-                            await update_fcm_token_for_account(account, request_json['fcm_token'], r)
-                        elif 'fcm_token_v2' in request_json and 'notification_enabled' in request_json:
+                        if 'fcm_token_v2' in request_json and 'notification_enabled' in request_json:
                             if request_json['notification_enabled']:
                                 await update_fcm_token_for_account(account, request_json['fcm_token_v2'], r, v2=True)
                             else:
-                                await delete_fcm_token_for_account(account, request_json['fcm_token_v2'], r) 
+                                await delete_fcm_token_for_account(account, request_json['fcm_token_v2'], r)
                     except Exception as e:
                         log.server_logger.error('reconnect error; %s; %s; %s', str(e), address, uid)
                         reply = {'error': 'reconnect error', 'detail': str(e)}
@@ -281,9 +290,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                             currency = 'usd'
                         await rpc.rpc_subscribe(ws, r, request_json['account'].replace("nano_", "xrb_"), currency)
                         # Store FCM token if available, for push notifications
-                        if 'fcm_token' in request_json:
-                            await update_fcm_token_for_account(request_json['account'], request_json['fcm_token'], r)
-                        elif 'fcm_token_v2' in request_json and 'notification_enabled' in request_json:
+                        if 'fcm_token_v2' in request_json and 'notification_enabled' in request_json:
                             if request_json['notification_enabled']:
                                 await update_fcm_token_for_account(request_json['account'], request_json['fcm_token_v2'], r, v2=True)
                             else:
@@ -369,6 +376,13 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
             # rpc: pending
             elif request_json['action'] == "pending":
                 try:
+                    # get threshold preference:
+                    if 'threshold' in request_json and 'account' in request_json:
+                        if request_json['threshold'] is not None and request_json['account'] is not None:
+                            # set the min_receive at account
+                            print("Setting threshold for account:", request_json['account'], request_json['threshold'])
+                            await r.app['rdata'].hset("account_min_raw", request_json['account'], request_json['threshold'])
+
                     reply = await rpc.pending_defer(r, uid, request_json)
                     if reply is None:
                         raise Exception
@@ -394,14 +408,108 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         'error':'account_history rpc error',
                         'detail': str(e)
                     })
-            elif request_json['action'] == 'request_payment':
-                # todo: insecure requesting_account field :/
-                err = await push_payment_request(r, request_json["account"], request_json["amount_raw"], request_json["requesting_account"])
+            elif request_json['action'] == 'payment_request':
+
+                # check if the nonce is valid
+                # vk = VerifyingKey(unhexlify(public_key))
+                # print(unhexlify(util.address_decode(request_json["requesting_account"])))
+                req_account_bin = unhexlify(util.address_decode(request_json["requesting_account"]))
+                signature = request_json["request_signature"]
+                request_nonce = request_json["request_nonce"]
+                # make sure the nonce is recent:
+                request_epoch_time = int(request_nonce, 16)
+
+                current_epoch_time = int(time.time())
+                if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
+                    # nonce is too old
+                    ret = json.dumps({
+                        'error':'nonce error',
+                        'detail': 'nonce is too old'
+                    })
+                else:
+
+                    vk = VerifyingKey(req_account_bin)
+
+                    try:
+                        vk.verify(
+                            sig=unhexlify(signature),
+                            msg=unhexlify(request_nonce),
+                        )
+
+                    except:
+                        print("@@@@@@@@invalid signature@@@@@@@@")
+                        ret = json.dumps({
+                            'error':'sig error',
+                            'detail': 'invalid signature'
+                        })
+
+                    if ret == None:
+                        err = await push_payment_request(r, request_json["account"], request_json["amount_raw"], request_json["requesting_account"], request_json["memo_enc"], request_json["local_uuid"])
+                        if err is not None:
+                            ret = json.dumps({
+                                'error':'fcm token error: ' + str(err),
+                                'detail': str(err)
+                            })
+                        else:
+                            ret = json.dumps({
+                                'success':'payment request sent',
+                            })
+
+
+            elif request_json['action'] == 'payment_ack':
+
+                err = await push_payment_ack(r, request_json["uuid"], request_json["account"])
                 if err is not None:
                     ret = json.dumps({
                         'error':'fcm token error',
                         'detail': str(err)
                     })
+                else:
+                    ret = json.dumps({
+                        'success':'payment memo sent',
+                    })
+            elif request_json['action'] == 'payment_memo':
+                # check if the nonce is valid
+                req_account_bin = unhexlify(util.address_decode(request_json["requesting_account"]))
+                signature = request_json["request_signature"]
+                request_nonce = request_json["request_nonce"]
+                # make sure the nonce is recent:
+                request_epoch_time = int(request_nonce, 16)
+
+                current_epoch_time = int(time.time())
+                if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
+                    # nonce is too old
+                    ret = json.dumps({
+                        'error':'nonce error',
+                        'detail': 'nonce is too old'
+                    })
+                else:
+
+                    vk = VerifyingKey(req_account_bin)
+
+                    try:
+                        vk.verify(
+                            sig=unhexlify(signature),
+                            msg=unhexlify(request_nonce),
+                        )
+
+                        err = await push_payment_memo(r, request_json["account"], request_json["requesting_account"], request_json["memo_enc"], request_json["block"], request_json["local_uuid"])
+                        if err is not None:
+                            ret = json.dumps({
+                                'error':'fcm token error',
+                                'detail': str(err)
+                            })
+                        else:
+                            ret = json.dumps({
+                                'success':'payment memo sent',
+                            })
+
+                    except:
+                        print("@@@@@@@@invalid signature@@@@@@@@")
+                        ret = json.dumps({
+                            'error':'sig error',
+                            'detail': 'invalid signature'
+                        })
             # rpc: fallthrough and error catch
             else:
                 try:
@@ -434,8 +542,7 @@ async def websocket_handler(r : web.Request):
     # Connection Opened
     ws.id = str(uuid.uuid4())
     r.app['clients'][ws.id] = ws
-    log.server_logger.info('new connection;%s;%s;User-Agent:%s', util.get_request_ip(r), ws.id, str(
-        r.headers.get('User-Agent')))
+    log.server_logger.info('new connection;%s;%s;User-Agent:%s', util.get_request_ip(r), ws.id, str(r.headers.get('User-Agent')))
 
     try:
         async for msg in ws:
@@ -498,46 +605,45 @@ async def callback_ws(app: web.Application, data: dict):
                     if data['block']['subtype'] == 'send':
                         data['is_send'] = 'true'
                         await app['clients'][sub].send_str(json.dumps(data))
-        # Send to natrium donations page
-        if data['block']['subtype'] == 'send' and link == 'nano_1natrium1o3z5519ifou7xii8crpxpk8y65qmkih8e8bpsjri651oza8imdd':
-            log.server_logger.info('Detected send to natrium account')
-            if 'amount' in data:
-                log.server_logger.info(f'emitting donation event for amount: {data["amount"]}')
-                await sio.emit('donation_event', {'amount':data['amount']})
+        
+        # push notifications:
+        await callback_retro(data, app)
 
-async def push_payment_request(r, account, amount_raw, requesting_account):
+        # # Send to natrium donations page
+        # if data['block']['subtype'] == 'send' and link == 'nano_1natrium1o3z5519ifou7xii8crpxpk8y65qmkih8e8bpsjri651oza8imdd':
+        #     log.server_logger.info('Detected send to natrium account')
+        #     if 'amount' in data:
+        #         log.server_logger.info(f'emitting donation event for amount: {data["amount"]}')
+        #         await sio.emit('donation_event', {'amount':data['amount']})
 
-    time.sleep(1)
+async def push_payment_request(r, account, amount_raw, requesting_account, memo_enc, local_uuid):
+
+    # time.sleep(2)
     # Push FCM notification if this is a send
     if fcm_api_key is None:
         return "no_api_key"
     link = account
     send_amount = int(amount_raw)
     
-    fcm_tokens = set(await get_fcm_tokens(link, r))
     fcm_tokens_v2 = set(await get_fcm_tokens(link, r, v2=True))
-    if (fcm_tokens is None or len(fcm_tokens) == 0) and (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+    if (fcm_tokens_v2 == None or len(fcm_tokens_v2) == 0):
         return "no_tokens"
 
     # get username if it exists:
-    shorthand_account = await app['rdata'].hget("usernames", f"{requesting_account}")
-    if shorthand_account is None:
+    shorthand_account = await r.app['rdata'].hget("usernames", f"{requesting_account}")
+    if shorthand_account == None:
         # set username to abbreviated account name:
         shorthand_account = requesting_account[0:12]
+    else:
+        shorthand_account = "@" + shorthand_account
 
-    # This is a send, push notifications
+    # push notifications
     fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
 
+    request_uuid = str(uuid.uuid4())
+    request_time = str(int(time.time()))
+
     # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
-    for t in fcm_tokens:
-        message = aiofcm.Message(
-                    device_token=t,
-                    data = {
-                        "amount": str(send_amount)
-                    },
-                    priority=aiofcm.PRIORITY_HIGH
-        )
-        await fcm.send_message(message)
     notification_title = f"Request for {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
     notification_body = f"Open Nautilus to pay this request."
     for t2 in fcm_tokens_v2:
@@ -553,29 +659,172 @@ async def push_payment_request(r, account, amount_raw, requesting_account):
                 "click_action": "FLUTTER_NOTIFICATION_CLICK",
                 "account": link,
                 "payment_request": True,
+                "uuid": request_uuid,
+                "local_uuid": local_uuid,
+                "memo_enc": str(memo_enc),
                 "amount_raw": str(send_amount),
                 "requesting_account": requesting_account,
-                "requesting_account_shorthand": shorthand_account
+                "requesting_account_shorthand": shorthand_account,
+                "request_time": request_time
             },
-            priority=aiofcm.PRIORITY_HIGH
+            priority=aiofcm.PRIORITY_HIGH,
+            content_available=True
         )
         await fcm.send_message(message)
 
-async def callback(r : web.Request):
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # also push to the requesting account, so they add the account to their list of payment requests
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+    fcm_tokens_v2 = set(await get_fcm_tokens(requesting_account, r, v2=True))
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return "no_tokens"
+
+    # push notifications
+    fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+
+    for t2 in fcm_tokens_v2:
+        message = aiofcm.Message(
+            device_token = t2,
+            data = {
+                # "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                "account": link,
+                "payment_record": True,
+                "is_request": True,
+                "memo_enc": str(memo_enc),
+                "uuid": request_uuid,
+                "local_uuid": local_uuid,
+                "amount_raw": str(send_amount),
+                "requesting_account": requesting_account,
+                "requesting_account_shorthand": shorthand_account,
+                "request_time": request_time
+            },
+            priority=aiofcm.PRIORITY_HIGH,
+            content_available=True
+        )
+        await fcm.send_message(message)
+
+
+async def push_payment_ack(r, request_uuid, account):
+
+    # time.sleep(2)
+    # Push FCM notification if this is a send
+    if fcm_api_key is None:
+        return "no_api_key"
+    link = account
+    
+    fcm_tokens_v2 = set(await get_fcm_tokens(link, r, v2=True))
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return "no_tokens"
+    
+    # push notifications
+    fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+
+    # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
+    # notification_title = f"Request for {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
+    # notification_body = f"Open Nautilus to pay this request."
+    for t2 in fcm_tokens_v2:
+        message = aiofcm.Message(
+            device_token = t2,
+            data = {
+                # "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                "account": account,
+                "payment_ack": True,
+                "uuid": request_uuid,
+            },
+            priority=aiofcm.PRIORITY_HIGH,
+            content_available=True
+        )
+        await fcm.send_message(message)
+
+async def push_payment_memo(r, account, requesting_account, memo_enc, block, local_uuid):
+
+    # time.sleep(2)
+    # Push FCM notification if this is a send
+    if fcm_api_key is None:
+        return "no_api_key"
+    link = account
+    
+    fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return "no_tokens"
+    
+    # push notifications
+    fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+
+    request_uuid = str(uuid.uuid4())
+    request_time = str(int(time.time()))
+
+    # send memo to the recipient
+    for t2 in fcm_tokens_v2:
+        message = aiofcm.Message(
+            device_token = t2,
+            data = {
+                # "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                "account": account,
+                "requesting_account": requesting_account,
+                "payment_memo": True,
+                "memo_enc": str(memo_enc),
+                "block": str(block),
+                "uuid": request_uuid,
+                "local_uuid": local_uuid,
+                "request_time": request_time
+            },
+            priority=aiofcm.PRIORITY_HIGH,
+            content_available=True
+        )
+        await fcm.send_message(message)
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # also push to the requesting account, so they get the uuid
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+    fcm_tokens_v2 = set(await get_fcm_tokens(requesting_account, r, v2=True))
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return "no_tokens"
+
+    # push notifications
+    fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+
+    for t2 in fcm_tokens_v2:
+        message = aiofcm.Message(
+            device_token = t2,
+            data = {
+                # "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                "account": account,
+                "requesting_account": requesting_account,
+                "payment_record": True,
+                "is_memo": True,
+                "memo_enc": str(memo_enc),
+                "uuid": request_uuid,
+                "local_uuid": local_uuid,
+                "block": str(block),
+                # "amount_raw": str(send_amount),
+                # "requesting_account": requesting_account,
+                # "requesting_account_shorthand": shorthand_account,
+                "request_time": request_time
+            },
+            priority=aiofcm.PRIORITY_HIGH,
+            content_available=True
+        )
+        await fcm.send_message(message)
+
+async def callback_retro(request_json, app):
     try:
-        request_json = await r.json()
         hash = request_json['hash']
         log.server_logger.debug(f"callback received {hash}")
-        request_json['block'] = json.loads(request_json['block'])
+        # request_json['block'] = json.loads(request_json['block'])
 
         link = request_json['block']['link_as_account']
+        
+        # hack bc the structure is weird:
+        r = Object()
+        r.app = app
 
         # Push FCM notification if this is a send
         if fcm_api_key is None:
             return web.HTTPOk()
-        fcm_tokens = set(await get_fcm_tokens(link, r))
         fcm_tokens_v2 = set(await get_fcm_tokens(link, r, v2=True))
-        if (fcm_tokens is None or len(fcm_tokens) == 0) and (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
             return web.HTTPOk()
         message = {
             "action":"block",
@@ -593,19 +842,19 @@ async def callback(r : web.Request):
         prev_balance = int(prev_data['contents']['balance'])
         cur_balance = int(request_json['block']['balance'])
         send_amount = prev_balance - cur_balance
-        if send_amount >= 1000000000000000000000000:
+
+        min_raw_receive = None
+        # check cached pref for min receive amount
+        min_raw_receive = await r.app['rdata'].hget("account_min_raw", link)
+
+        if min_raw_receive is None:
+            # min_raw_receive = "1000000000000000000000000"
+            min_raw_receive = "0"
+
+        if int(send_amount) >= int(min_raw_receive):
             # This is a send, push notifications
             fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
             # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
-            for t in fcm_tokens:
-                message = aiofcm.Message(
-                            device_token=t,
-                            data = {
-                                "amount": str(send_amount)
-                            },
-                            priority=aiofcm.PRIORITY_HIGH
-                )
-                await fcm.send_message(message)
             notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'}"
             notification_body = f"Open Nautilus to view this transaction."
             for t2 in fcm_tokens_v2:
@@ -619,9 +868,82 @@ async def callback(r : web.Request):
                     },
                     data = {
                         "click_action": "FLUTTER_NOTIFICATION_CLICK",
-                        "account": link
+                        "account": link,
+                        # "memo": request_json['block']['memo']
                     },
-                    priority=aiofcm.PRIORITY_HIGH
+                    priority=aiofcm.PRIORITY_HIGH,
+                    content_available=True
+                )
+                await fcm.send_message(message)
+        return web.HTTPOk()
+    except Exception:
+        log.server_logger.exception("received exception in callback")
+        return web.HTTPInternalServerError(reason=f"Something went wrong {str(sys.exc_info())}")
+
+async def callback(r : web.Request):
+    try:
+        request_json = await r.json()
+        hash = request_json['hash']
+        log.server_logger.debug(f"callback received {hash}")
+        request_json['block'] = json.loads(request_json['block'])
+
+        link = request_json['block']['link_as_account']
+
+        # Push FCM notification if this is a send
+        if fcm_api_key is None:
+            return web.HTTPOk()
+        fcm_tokens_v2 = set(await get_fcm_tokens(link, r, v2=True))
+        if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+            return web.HTTPOk()
+        message = {
+            "action":"block",
+            "hash":request_json['block']['previous']
+        }
+        response = await rpc.json_post(message)
+        if response is None:
+            return web.HTTPOk()
+        # See if this block was already pocketed
+        cached_hash = await r.app['rdata'].get(f"link_{hash}")
+        if cached_hash is not None:
+            return web.HTTPOk()
+        prev_data = response
+        prev_data = prev_data['contents'] = json.loads(prev_data['contents'])
+        prev_balance = int(prev_data['contents']['balance'])
+        cur_balance = int(request_json['block']['balance'])
+        send_amount = prev_balance - cur_balance
+
+        min_raw_receive = None
+        # check cached pref for min receive amount
+        min_raw_receive = await r.app['rdata'].get("account_min_raw", link)
+
+        if min_raw_receive is None:
+            # min_raw_receive = "1000000000000000000000000"
+            min_raw_receive = "0"
+
+        print(f"@@@@@@@@@@@@@@@{min_raw_receive} {send_amount}")
+
+        if int(send_amount) >= int(min_raw_receive):
+            # This is a send, push notifications
+            fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+            # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
+            notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'}"
+            notification_body = f"Open Nautilus to view this transaction."
+            for t2 in fcm_tokens_v2:
+                message = aiofcm.Message(
+                    device_token = t2,
+                    notification = {
+                        "title":notification_title,
+                        "body":notification_body,
+                        "sound":"default",
+                        "tag":link
+                    },
+                    data = {
+                        "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                        "account": link,
+                        # "memo": request_json['block']['memo']
+                    },
+                    priority=aiofcm.PRIORITY_HIGH,
+                    content_available=True
                 )
                 await fcm.send_message(message)
         return web.HTTPOk()
@@ -711,7 +1033,8 @@ async def init_app():
             )
     })    
     app.add_routes([web.get('/', websocket_handler)]) # All WS requests
-    app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
+    # TODO: fix? might be deprecated later anyways:
+    # app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
     # HTTP API
     users_resource = cors.add(app.router.add_resource("/api"))
     cors.add(users_resource.add_route("POST", http_api))    

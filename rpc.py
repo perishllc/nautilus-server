@@ -13,7 +13,7 @@ allowed_rpc_actions = ["account_balance", "account_block_count", "account_check"
                        "blocks", "block_info", "blocks_info", "block_account", "block_count", "block_count_type",
                        "chain", "frontiers", "frontier_count", "history",
                        "key_expand", "process", "representatives", "republish", "peers", "version", "pending",
-                       "pending_exists", "price_data", "fcm_update", "active_difficulty", "request_payment"]
+                       "pending_exists", "price_data", "fcm_update", "active_difficulty", "payment_request", "payment_ack", "payment_memo"]
 
 class RPC:
     def __init__(self, node_url : str, banano_mode : bool, work_url : str = None, price_prefix : str = None):

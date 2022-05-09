@@ -7,4 +7,4 @@ RUN pip install --trusted-host pypi.org --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "natriumcast.py", "--host", "0.0.0.0", "--log-to-stdout"]
+CMD ["python", "nautiluscast.py", "--host", "0.0.0.0", "--log-to-stdout"]

@@ -14,6 +14,7 @@ coingecko_url = 'https://api.coingecko.com/api/v3/coins/nano?localization=false&
 nano_api_url = 'https://nano.to/known'
 
 def coingecko():
+    # rdata.flushall()
     response = requests.get(url=coingecko_url).json()
     if 'market_data' not in response:
         return
