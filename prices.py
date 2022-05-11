@@ -51,7 +51,7 @@ def nano_api():
         print(user)
         rdata.hset("usernames", user["address"], user["name"])
 
-# coingecko()
+coingecko()
 nano_api()
 
 print("Coingecko NANO-USD:", rdata.hget("prices", "coingecko:nano-usd").decode('utf-8'))

@@ -444,7 +444,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         })
 
                     if ret == None:
-                        err = await push_payment_request(r, request_json["account"], request_json["amount_raw"], request_json["requesting_account"], request_json["memo_enc"], request_json["local_uuid"])
+                        err = await push_payment_request(r, request_json.get("account"), request_json.get("amount_raw"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("local_uuid"))
                         if err is not None:
                             ret = json.dumps({
                                 'error':'fcm token error: ' + str(err),
@@ -493,7 +493,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                             msg=unhexlify(request_nonce),
                         )
 
-                        err = await push_payment_memo(r, request_json["account"], request_json["requesting_account"], request_json["memo_enc"], request_json["block"], request_json["local_uuid"])
+                        err = await push_payment_memo(r, request_json.get("account"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("block"), request_json.get("local_uuid"))
                         if err is not None:
                             ret = json.dumps({
                                 'error':'fcm token error',
