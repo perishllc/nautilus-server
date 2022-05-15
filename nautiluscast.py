@@ -466,7 +466,18 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     })
                 else:
                     ret = json.dumps({
-                        'success':'payment memo sent',
+                        'success':'payment_ack sent',
+                    })
+                # send again to the sender:
+                err = await push_payment_ack(r, request_json["uuid"], request_json["requesting_account"])
+                if err is not None:
+                    ret = json.dumps({
+                        'error':'fcm token error',
+                        'detail': str(err)
+                    })
+                else:
+                    ret = json.dumps({
+                        'success':'payment_ack sent',
                     })
             elif request_json['action'] == 'payment_memo':
                 # check if the nonce is valid
