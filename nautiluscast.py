@@ -34,12 +34,12 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # Configuration arguments
 
-parser = argparse.ArgumentParser(description="Natrium/Kalium Wallet Server")
+parser = argparse.ArgumentParser(description="Nautilus Wallet Server")
 parser.add_argument('-b', '--banano', action='store_true', help='Run for BANANO (Kalium-mode)', default=False)
 parser.add_argument('--host', type=str, help='Host to listen on (e.g. 127.0.0.1)', default='127.0.0.1')
 parser.add_argument('--path', type=str, help='(Optional) Path to run application on (for unix socket, e.g. /tmp/natriumapp.sock', default=None)
 parser.add_argument('-p', '--port', type=int, help='Port to listen on', default=5076)
-parser.add_argument('-ws', '--websocket-url', type=str, help='Nano websocket URI', default='ws://[::1]:7078')
+# parser.add_argument('-ws', '--websocket-url', type=str, help='Nano websocket URI', default='ws://[::1]:7078')
 parser.add_argument('--log-file', type=str, help='Log file location', default='natriumcast.log')
 parser.add_argument('--log-to-stdout', action='store_true', help='Log to stdout', default=False)
 
@@ -49,7 +49,10 @@ try:
     listen_host = str(ipaddress.ip_address(options.host))
     listen_port = int(options.port)
     redis_host = os.getenv('REDIS_HOST', 'localhost')
-    redis_port = 6379
+    redis_port = int(os.getenv('REDIS_PORT', 6379))
+    redis_db = int(os.getenv('REDIS_DB', '2'))
+    redis_username = os.getenv('REDIS_USERNAME', None)
+    redis_password = os.getenv('REDIS_PASSWORD', None)
     log_file = options.log_file
     app_path = options.path
     if app_path is None:
@@ -69,7 +72,7 @@ except Exception as e:
 price_prefix = 'coingecko:nano' if not banano_mode else 'coingecko:banano'
 
 # Environment configuration
-
+ws_url = os.getenv('WS_URL', 'ws://[::1]:7078')
 rpc_url = os.getenv('RPC_URL', 'http://[::1]:7076')
 work_url = os.getenv('WORK_URL', None)
 fcm_api_key = os.getenv('FCM_API_KEY', None)
@@ -1008,7 +1011,16 @@ async def init_app():
         """Open redis connections"""
         log.server_logger.info("Opening redis connections")
         app['rdata'] = await aioredis.create_redis_pool((redis_host, redis_port),
-                                                db=int(os.getenv('REDIS_DB', '2')), encoding='utf-8', minsize=2, maxsize=15)
+            db=redis_db, encoding='utf-8', minsize=2, maxsize=15, password=redis_password, ssl=True)
+        # redis_url = "rediss://"
+        # if redis_username != None:
+        #     redis_url += f"{redis_username}:{redis_password}@"
+        # redis_url += redis_host
+        # if redis_port != None:
+        #     redis_url += f":{redis_port}"
+        # app['rdata'] = await aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True, db=int(os.getenv('REDIS_DB', '2')), max_connections=15)
+        # app['rdata'] = await aioredis.create_connection((redis_host, redis_port), encoding="utf-8", decode_responses=True, db=int(os.getenv('REDIS_DB', '2')), ssl=True)
+
         # Global vars
         app['clients'] = {} # Keep track of connected clients
         app['last_msg'] = {} # Last time a client has sent a message
@@ -1080,8 +1092,8 @@ def main():
             site = web.TCPSite(runner, listen_host, listen_port)
         tasks.append(site.start())
         # Websocket
-        log.server_logger.info(f"Attempting to open WS connection to {options.websocket_url}")
-        ws = WebsocketClient(app, options.websocket_url, callback_ws)
+        log.server_logger.info(f"Attempting to open WS connection to {ws_url}")
+        ws = WebsocketClient(app, ws_url, callback_ws)
         await ws.setup()
         tasks.append(ws.loop())
         await asyncio.wait(tasks)

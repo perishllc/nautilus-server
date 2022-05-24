@@ -66,7 +66,7 @@ class RPC:
 
         if response is None:
             log.server_logger.error('reconnect error; %s ; %s', self.util.get_request_ip(r), ws.id)
-            ws.send_str('{"error":"reconnect error"}')
+            await ws.send_str('{"error":"reconnect error"}')
         else:
             log.server_logger.debug('received response for account_info %s', json.dumps(response))     
             if account in r.app['subscriptions']:

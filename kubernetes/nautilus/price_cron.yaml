@@ -1,22 +1,33 @@
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: natrium-prices
-  namespace: natrium
+  name: nautilus-prices
+  namespace: nautilus
 spec:
   schedule: "*/5 * * * *"
   jobTemplate:
     spec:
       template:
         spec:
+          imagePullSecrets:
+          - name: regcred
           containers:
-          - name: boompow
-            image: replaceme
+          - name: nautilus-server
+            image: fossephate/nautilus-backend:latest
             command: ["/bin/bash", "-c"]
             args: ["python prices.py"]
             env:
-              - name: REDIS_HOST
-                value: redis-0.redis
-              - name: REDIS_DB
-                value: "10"
+            - name: REDIS_HOST
+              value: db-redis-nyc3-79075-do-user-1024997-0.b.db.ondigitalocean.com
+            - name: REDIS_DB
+              value: "2"
+            - name: REDIS_PORT
+              value: "25061"
+            - name: REDIS_USERNAME
+              value: default
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nautilus
+                  key: redis_password
           restartPolicy: OnFailure
