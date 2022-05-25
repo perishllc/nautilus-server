@@ -52,7 +52,7 @@ spec:
           - name: WORK_URL
             value: http://node.perish.co:7090
           - name: DEBUG
-            value: "0"
+            value: "1"
           - name: FCM_API_KEY
             valueFrom:
               secretKeyRef:
