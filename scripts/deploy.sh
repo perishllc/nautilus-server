@@ -1,6 +1,8 @@
 sudo docker build . -t fossephate/nautilus-backend
 sudo docker push fossephate/nautilus-backend:latest
 
+kubectl replace -f ./kubernetes/nautilus/deployment.yaml
+
 # DNS:
 doctl compute domain records create perish.co --record-type "A" --record-name "nautilus" --record-data "45.55.125.226" --record-ttl "30"
 
