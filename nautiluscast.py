@@ -647,7 +647,6 @@ async def websocket_handler(r : web.Request):
 async def http_api(r: web.Request):
     try:
         request_json = await r.json()
-        print(request_json)
         reply = await handle_user_message(r, json.dumps(request_json))
         if reply is not None:
             return web.json_response(data=json.loads(reply))
@@ -1195,7 +1194,7 @@ async def init_app():
     })    
     app.add_routes([web.get('/', websocket_handler)]) # All WS requests
     # TODO: fix? might be deprecated later anyways:
-    # app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
+    app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
     # HTTP API
     users_resource = cors.add(app.router.add_resource("/api"))
     cors.add(users_resource.add_route("POST", http_api))    
