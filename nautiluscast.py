@@ -1191,13 +1191,18 @@ async def init_app():
                 expose_headers="*",
                 allow_headers="*",
             )
-    })    
+    })
+    # websockets:
     app.add_routes([web.get('/', websocket_handler)]) # All WS requests
-    # TODO: fix? might be deprecated later anyways:
-    app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
+    # get node callbacks:
+    # old:
+    # app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
+    # new (CORS):
+    callback_resource = cors.add(app.router.add_resource("/callback"))
+    cors.add(callback_resource.add_route("POST", callback))
     # HTTP API
     users_resource = cors.add(app.router.add_resource("/api"))
-    cors.add(users_resource.add_route("POST", http_api))    
+    cors.add(users_resource.add_route("POST", http_api))
     alerts_resource = cors.add(app.router.add_resource("/alerts/{lang}"))
     cors.add(alerts_resource.add_route("GET", alerts_api))
     #app.add_routes([web.post('/callback', callback)])

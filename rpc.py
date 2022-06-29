@@ -7,13 +7,14 @@ from aiohttp import ClientSession, log, web
 from util import Util
 
 # whitelisted commands, disallow anything used for local node-based wallet as we may be using multiple back ends
+# todo: remove "pending" actions
 allowed_rpc_actions = ["account_balance", "account_block_count", "account_check", "account_info", "account_history",
                        "account_representative", "account_subscribe", "account_weight", "accounts_balances",
                        "accounts_frontiers", "accounts_pending", "available_supply", "block", "block_hash",
                        "blocks", "block_info", "blocks_info", "block_account", "block_count", "block_count_type",
                        "chain", "frontiers", "frontier_count", "history",
                        "key_expand", "process", "representatives", "republish", "peers", "version", "pending",
-                       "pending_exists", "price_data", "fcm_update", "active_difficulty", "payment_request", "payment_ack", "payment_memo", "payment_message"]
+                       "pending_exists", "receivable", "receivable_exists", "accounts_receivable", "price_data", "fcm_update", "active_difficulty", "payment_request", "payment_ack", "payment_memo", "payment_message"]
 
 class RPC:
     def __init__(self, node_url : str, banano_mode : bool, work_url : str = None, price_prefix : str = None):

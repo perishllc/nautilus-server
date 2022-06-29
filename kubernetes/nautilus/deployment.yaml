@@ -46,11 +46,11 @@ spec:
                 name: nautilus
                 key: redis_password
           - name: WS_URL
-            value: ws://node.perish.co:9952
+            value: ws://node.perish.co:9078
           - name: RPC_URL
-            value: http://node.perish.co:9950/proxy
+            value: http://node.perish.co:9076
           - name: WORK_URL
-            value: http://node.perish.co:7090
+            value: http://workers.perish.co:5555
           - name: DEBUG
             value: "1"
           - name: FCM_API_KEY

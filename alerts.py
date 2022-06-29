@@ -66,6 +66,68 @@ ACTIVE_ALERTS = [
             "short_description": "På grund af igangværende problemer med Nano-netværket er der mange forsinkede transaktioner.",
             "long_description": "Nano-netværket oplever problemer på grund af en lang og løbende periode med spamtransaktioner.\n\nNogle transaktioner kan tage lang tid, op til flere dage. Vi holder vores brugere opdateret med nye oplysninger, så snart Nano-teamet giver dem.\n\nDu kan læse mere ved at klikke \"Læs mere\" nedenfor.\n\nAlle problemer med hensyn til transaktionsforsinkelser skyldes problemer med Nano-netværket, ikke Natrium. Vi er ikke tilknyttet Nano Foundation eller dets udviklere og kan ikke gøre noget for at fremskynde langsomme transaktioner.\n\nVi sætter pris på din tålmodighed i denne periode.",
         }
+    },
+    {
+        "id": 2,
+        "active": False,
+        "priority": LOW_PRIORITY,
+        # yyyy, M,  D,  H,  M,  S, MS
+        "timestamp": int((datetime(2022, 6, 24, 0, 0, 0, 0, tzinfo=timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds() * 1000),
+        "en": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "sv": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "es": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "tr": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "ja": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "de": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "fr": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "nl": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "iDD": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "ru": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        },
+        "da": {
+            "title": "Planned Maintenance",
+            "short_description": "Backend work",
+            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+        }
     }
 ]
 
