@@ -23,7 +23,7 @@ import aiohttp_cors
 from rpc import RPC, allowed_rpc_actions
 from util import Util
 from nano_websocket import WebsocketClient
-from alerts import get_active_alert
+from alerts import get_active_alert, get_active_funding
 
 # verify block signature:
 from ed25519_blake2b import BadSignatureError, SigningKey, VerifyingKey
@@ -40,7 +40,7 @@ parser.add_argument('--host', type=str, help='Host to listen on (e.g. 127.0.0.1)
 parser.add_argument('--path', type=str, help='(Optional) Path to run application on (for unix socket, e.g. /tmp/natriumapp.sock', default=None)
 parser.add_argument('-p', '--port', type=int, help='Port to listen on', default=5076)
 # parser.add_argument('-ws', '--websocket-url', type=str, help='Nano websocket URI', default='ws://[::1]:7078')
-parser.add_argument('--log-file', type=str, help='Log file location', default='natriumcast.log')
+parser.add_argument('--log-file', type=str, help='Log file location', default='nautiluscast.log')
 parser.add_argument('--log-to-stdout', action='store_true', help='Log to stdout', default=False)
 
 options = parser.parse_args()
@@ -280,7 +280,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                                 await delete_fcm_token_for_account(account, request_json['fcm_token_v2'], r)
                     except Exception as e:
                         log.server_logger.error('reconnect error; %s; %s; %s', str(e), address, uid)
-                        reply = {'error': 'reconnect error', 'detail': str(e)}
+                        reply = {'error': 'reconnect error', 'details': str(e)}
                         if requestid is not None: reply['request_id'] = requestid
                         ret = json.dumps(reply)
                 # new user, setup uuid(or use existing if available) and account info
@@ -300,7 +300,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                                 await delete_fcm_token_for_account(request_json['account'], request_json['fcm_token_v2'], r)
                     except Exception as e:
                         log.server_logger.error('subscribe error;%s;%s;%s', str(e), address, uid)
-                        reply = {'error': 'subscribe error', 'detail': str(e)}
+                        reply = {'error': 'subscribe error', 'details': str(e)}
                         if requestid is not None: reply['request_id'] = requestid
                         ret = json.dumps(reply)
     
@@ -351,7 +351,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     log.server_logger.error('account check error;%s;%s;%s', str(e), util.get_request_ip(r), uid)
                     ret = json.dumps({
                         'error': 'account check error',
-                        'detail': str(e)
+                        'details': str(e)
                     })
             # rpc: process
             elif request_json['action'] == "process":
@@ -375,7 +375,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         str(e), util.get_request_ip(r), uid, str(r.headers.get('User-Agent')))
                     ret = json.dumps({
                         'error':'process rpc error',
-                        'detail':str(e)
+                        'details':str(e)
                     })
             # rpc: receivable / deprecated: pending v23.0
             elif request_json['action'] == "receivable" or request_json['action'] == "pending":
@@ -396,7 +396,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         e), util.get_request_ip(r), uid, str(r.headers.get('User-Agent')))
                     ret = json.dumps({
                         'error':'receivable rpc error',
-                        'detail':str(e)
+                        'details':str(e)
                     })
     
             elif request_json['action'] == 'account_history':
@@ -411,7 +411,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     log.server_logger.error('rpc error;%s;%s;%s', str(e), util.get_request_ip(r), uid)
                     ret = json.dumps({
                         'error':'account_history rpc error',
-                        'detail': str(e)
+                        'details': str(e)
                     })
 
             # elif request_json['action'] == 'account_balances':
@@ -433,7 +433,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     # nonce is too old
                     ret = json.dumps({
                         'error':'nonce error',
-                        'detail': 'nonce is too old'
+                        'details': 'nonce is too old'
                     })
                 else:
 
@@ -449,7 +449,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         print("@@@@@@@@invalid signature@@@@@@@@")
                         ret = json.dumps({
                             'error':'sig error',
-                            'detail': 'invalid signature'
+                            'details': 'invalid signature'
                         })
 
                     if ret == None:
@@ -457,7 +457,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         if err is not None:
                             ret = json.dumps({
                                 'error':'fcm token error: ' + str(err),
-                                'detail': str(err)
+                                'details': str(err)
                             })
                         else:
                             ret = json.dumps({
@@ -470,7 +470,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                 if err is not None:
                     ret = json.dumps({
                         'error':'fcm token error',
-                        'detail': str(err)
+                        'details': str(err)
                     })
                 else:
                     ret = json.dumps({
@@ -481,7 +481,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                 if err is not None:
                     ret = json.dumps({
                         'error':'fcm token error',
-                        'detail': str(err)
+                        'details': str(err)
                     })
                 else:
                     ret = json.dumps({
@@ -501,7 +501,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     # nonce is too old
                     ret = json.dumps({
                         'error':'nonce error',
-                        'detail': 'nonce is too old'
+                        'details': 'nonce is too old'
                     })
                 else:
 
@@ -516,7 +516,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         print("@@@@@@@@invalid signature@@@@@@@@")
                         ret = json.dumps({
                             'error':'sig error',
-                            'detail': 'invalid signature'
+                            'details': 'invalid signature'
                         })
 
                     if ret == None:
@@ -524,7 +524,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         if err is not None:
                             ret = json.dumps({
                                 'error':'fcm token error',
-                                'detail': str(err)
+                                'details': str(err)
                             })
                         else:
                             ret = json.dumps({
@@ -544,7 +544,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     # nonce is too old
                     ret = json.dumps({
                         'error':'nonce error',
-                        'detail': 'nonce is too old'
+                        'details': 'nonce is too old'
                     })
                 else:
 
@@ -560,7 +560,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         print("@@@@@@@@invalid signature@@@@@@@@")
                         ret = json.dumps({
                             'error':'sig error',
-                            'detail': 'invalid signature'
+                            'details': 'invalid signature'
                         })
 
                     if ret == None:
@@ -568,7 +568,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                         if err is not None:
                             ret = json.dumps({
                                 'error':'fcm token error',
-                                'detail': str(err)
+                                'details': str(err)
                             })
                         else:
                             ret = json.dumps({
@@ -586,13 +586,13 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                     log.server_logger.error('rpc error;%s;%s;%s', str(e), util.get_request_ip(r), uid)
                     ret = json.dumps({
                         'error':'rpc error',
-                        'detail': str(e)
+                        'details': str(e)
                     })
     except Exception as e:
         log.server_logger.exception('uncaught error;%s;%s', util.get_request_ip(r), uid)
         ret = json.dumps({
             'error':'general error',
-            'detail':str(sys.exc_info())
+            'details':str(sys.exc_info())
         })
     finally:
         r.app['active_messages'].remove(message)
@@ -659,6 +659,17 @@ async def http_api(r: web.Request):
 async def alerts_api(r: web.Request):
     return web.json_response(data=get_active_alert(r.match_info["lang"]))
 
+async def funding_api(r: web.Request):
+    alerts = get_active_funding(r.match_info["lang"])
+
+    for i in range(len(alerts)):
+        if "address" in alerts[i]:
+            balance_raw = await r.app['rdata'].hget("funding_balances", alerts[i]["address"])
+            if balance_raw is not None:
+                alerts[i]["current_amount_raw"] = balance_raw
+
+    return web.json_response(data=alerts)
+
 async def callback_ws(app: web.Application, data: dict):   
     if 'block' in data and 'link_as_account' in data['block']:
         account = data['block']['link_as_account']
@@ -671,7 +682,7 @@ async def callback_ws(app: web.Application, data: dict):
                         await app['clients'][sub].send_str(json.dumps(data))
         
         # push notifications:
-        await callback_retro(data, app)
+        # await callback_retro(data, app)
 
         # # Send to natrium donations page
         # if data['block']['subtype'] == 'send' and link == 'nano_1natrium1o3z5519ifou7xii8crpxpk8y65qmkih8e8bpsjri651oza8imdd':
@@ -1046,57 +1057,61 @@ async def callback(r : web.Request):
         fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
         if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
             return web.HTTPOk()
-        message = {
-            "action":"block",
-            "hash":request_json['block']['previous']
-        }
-        response = await rpc.json_post(message)
-        if response is None:
-            return web.HTTPOk()
-        # See if this block was already pocketed
-        cached_hash = await r.app['rdata'].get(f"link_{hash}")
-        if cached_hash is not None:
-            return web.HTTPOk()
-        prev_data = response
-        prev_data = prev_data['contents'] = json.loads(prev_data['contents'])
-        prev_balance = int(prev_data['contents']['balance'])
-        cur_balance = int(request_json['block']['balance'])
-        send_amount = prev_balance - cur_balance
+        # message = {
+        #     "action":"block",
+        #     "hash":request_json['block']['previous']
+        # }
+        # response = await rpc.json_post(message)
+        # if response is None:
+        #     return web.HTTPOk()
+
+        # # See if this block was already pocketed
+        # cached_hash = await r.app['rdata'].get(f"link_{hash}")
+        # if cached_hash is not None:
+        #     return web.HTTPOk()
+        
+        # # TODO: figure out why the RPC above causes a 500 internal server error:
+        # prev_data = response
+        # prev_data = prev_data['contents'] = json.loads(prev_data['contents'])
+        # prev_balance = int(prev_data['contents']['balance'])
+        # cur_balance = int(request_json['block']['balance'])
+        # send_amount = prev_balance - cur_balance
+
+
+        send_amount = int(request_json['amount'])
+        
 
         min_raw_receive = None
         # check cached pref for min receive amount
-        min_raw_receive = await r.app['rdata'].get("account_min_raw", account)
+        min_raw_receive = await r.app['rdata'].hget("account_min_raw", account)
 
         if min_raw_receive is None:
             # min_raw_receive = "1000000000000000000000000"
             min_raw_receive = "0"
 
-        print(f"@@@@@@@@@@@@@@@{min_raw_receive} {send_amount}")
-
-        if int(send_amount) >= int(min_raw_receive):
-            # This is a send, push notifications
-            fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
-            # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
-            notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'}"
-            notification_body = f"Open Nautilus to view this transaction."
-            for t2 in fcm_tokens_v2:
-                message = aiofcm.Message(
-                    device_token = t2,
-                    notification = {
-                        "title":notification_title,
-                        "body":notification_body,
-                        "sound":"default",
-                        "tag":account
-                    },
-                    data = {
-                        "click_action": "FLUTTER_NOTIFICATION_CLICK",
-                        "account": account,
-                        # "memo": request_json['block']['memo']
-                    },
-                    priority=aiofcm.PRIORITY_HIGH,
-                    content_available=True
-                )
-                await fcm.send_message(message)
+        # if int(send_amount) >= int(min_raw_receive):
+        # This is a send, push notifications
+        fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+        # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
+        notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'}"
+        notification_body = f"Open Nautilus to view this transaction."
+        for t2 in fcm_tokens_v2:
+            message = aiofcm.Message(
+                device_token = t2,
+                notification = {
+                    "title":notification_title,
+                    "body":notification_body,
+                    "sound":"default",
+                    "tag":account
+                },
+                data = {
+                    "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                    "account": account,
+                },
+                priority=aiofcm.PRIORITY_HIGH,
+                content_available=True
+            )
+            await fcm.send_message(message)
         return web.HTTPOk()
     except Exception:
         log.server_logger.exception("received exception in callback")
@@ -1198,14 +1213,15 @@ async def init_app():
     # old:
     # app.add_routes([web.post('/callback', callback)]) # HTTP Callback from node
     # new (CORS):
-    callback_resource = cors.add(app.router.add_resource("/callback"))
+    callback_resource = cors.add(app.router.add_resource("/retro"))
     cors.add(callback_resource.add_route("POST", callback))
     # HTTP API
     users_resource = cors.add(app.router.add_resource("/api"))
     cors.add(users_resource.add_route("POST", http_api))
     alerts_resource = cors.add(app.router.add_resource("/alerts/{lang}"))
     cors.add(alerts_resource.add_route("GET", alerts_api))
-    #app.add_routes([web.post('/callback', callback)])
+    funding_resource = cors.add(app.router.add_resource("/funding/{lang}"))
+    cors.add(funding_resource.add_route("GET", funding_api))
     app.on_startup.append(open_redis)
     app.on_shutdown.append(close_redis)
 

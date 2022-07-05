@@ -30,4 +30,8 @@ spec:
                 secretKeyRef:
                   name: nautilus
                   key: redis_password
+            - name: RPC_URL
+              value: http://node.perish.co:9076
+            - name: WORK_URL
+              value: http://workers.perish.co:5555
           restartPolicy: OnFailure

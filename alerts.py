@@ -78,58 +78,175 @@ ACTIVE_ALERTS = [
             "short_description": "Backend work",
             "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
         },
-        "sv": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
+    },
+    {
+        "id": 3,
+        "active": False,
+        "priority": LOW_PRIORITY,
+        # yyyy, M,  D,  H,  M,  S, MS
+        "timestamp": int((datetime(2022, 7, 3, 0, 0, 0, 0, tzinfo=timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds() * 1000),
+        "en": {
+            "title": "Server Outage",
+            "short_description": "Unknown PoW issue",
+            "long_description": "Something is wrong with the PoW server, sends are down until I'm back from vacation tomorrow and am able to fix the issue, apologies for the inconvienence."
         },
-        "es": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "tr": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "ja": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "de": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "fr": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "nl": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "iDD": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "ru": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        },
-        "da": {
-            "title": "Planned Maintenance",
-            "short_description": "Backend work",
-            "long_description": "Backend work is being done to migrate to more powerful hardware, features of the app may stop working for the next few hours"
-        }
     }
 ]
+
+LOCALES = ["en", "sv", "es", "tr", "ja", "de", "fr", "nl", "iDD", "ru", "da"]
+
+ACTIVE_FUNDING = [
+    {
+        "id": 0,
+        "active": True,
+        "address": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+        "goal_amount_raw": "100000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Monthly Server Costs",
+            "short_description": "Keep the backend alive!",
+            "long_description": "Running a reliable backend is expensive! I will probably continue to eat this cost if not met, but I unfortunately can't support this on my own forever\n\nIf this goes past 100% I'll work toward adding a redundant backend on an entirely different hosting provider, so that even if there's an outage, the backend will still stay online",
+        },
+    },
+    {
+        "id": 1,
+        "active": True,
+        "address": "nano_1u844awm5ch3ktwwzpzjfchj54ay5o6a7kyop5jycue7bw5jr117m15tx8oa",
+        "goal_amount_raw": "500000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Hardware Wallet Support",
+            "short_description": "Starting with the Ledger Nano S/X",
+            # "long_description": "todo",
+        },
+    },
+    {
+        "id": 2,
+        "active": True,
+        "address": "nano_1f5z6gy3mf6gyyen79sidopxizcp59u6iahcmhtatti3qeh7q7m9w5s548nc",
+        "goal_amount_raw": "500000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Offline Proof of Work",
+            "short_description": "Add support for doing Proof of Work even if the server is offline.",
+            "long_description": "This would include a progress bar of some kind on the home screen + a notification to let you know that the PoW is done.",
+        },
+    },
+    {
+        "id": 3,
+        "active": True,
+        "address": "nano_14qojirkhwgekfpf1jbqfd58ks7t6rrjtzuaetytkxmmuhdgx5cmjhgr5wu5",
+        "goal_amount_raw": "500000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "NFC Support",
+            "short_description": "Support using NFC for payments similarly to QR codes (Android Only)",
+            # "long_description": "todo",
+        },
+    },
+    {
+        "id": 4,
+        "active": True,
+        "address": "nano_3mt48meumbxzw3nsnpq43nzrrnx8rb6sjrxtwqdix564htc73hhra4gbuipo",
+        "goal_amount_raw": "2000000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Rent",
+            "short_description": "Allow me to work on Nautilus, Perishable full-time",
+            "long_description": "I love working on these projects, and it'd mean so much if I could work on it full time. If this category is met I'll be putting all of my time into nautilus / perishable",
+        },
+    },
+    {
+        "id": 5,
+        "active": True,
+        "address": "nano_3uzdra7hdf9qb19a3g61jrsyt8zkthexrtyx186oc8auyegpir8ezm6y9sra ",
+        "goal_amount_raw": "5000000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Legal Financing",
+            "short_description": "(i.e. On/Offramps + Monetary Services)",
+            "long_description": "There are features and services I want to create, but just don't have the financial backing to make it happen.\nThis will go towards things like paying a lawyer, (corporation) registration fees, and any other costs involved with making these features possible.\n\nAn example of what this would help achieve: A Nautilus Debit Card that lets you spend your nano as fiat",
+        },
+    },
+    {
+        "id": 6,
+        "active": False,
+        "address": "nano_3wneupytd8wxgjrydiq4axoipr9wbpkdycd83bfibemjgmreere1tgnn7ajh",
+        "goal_amount_raw": "5000000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Perishable",
+            "short_description": "Decentralized L2 Storage Network using nano",
+            "long_description": "Still a WIP Business idea, but feel free to ask about it on the discord",
+        },
+    },
+    {
+        "id": 7,
+        "active": True,
+        "address": "nano_13ddtgi44o3on9j1d6ughjakoe3s9m515q8fasissky7snsomf93cywsiq68",
+        "goal_amount_raw": "500000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Block Handoff Support",
+            "short_description": "First Implementation of Block Handoff",
+            "long_description": "This will be used to facilitate / replace the current payment requests system, though some details still need to be worked out",
+        },
+    },
+    {
+        "id": 8,
+        "active": True,
+        "address": "nano_1n8syxftoknbadk8k46ou7rstawfmfr8qh1jq1dkuuskrspb9yygkise9drr",
+        "goal_amount_raw": "500000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Bug Bounty Fund",
+            "short_description": "Fund the bug bounty program!",
+            "long_description": "Found a bug? Let me know and I'll pay you for it! Bugs must be unique and must not already be in the #todo channel\n\nJoin the discord and submit a report in #bug-reports",
+        },
+    },
+    {
+        "id": 9,
+        "active": True,
+        "address": "nano_16uomspu1foykg7mumh39i3iosi73fsy74xfsr6rupiw3wzcrea8tnpax67h",
+        "goal_amount_raw": "300000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Memo and Request Caching",
+            "short_description": "Better deliverability of memos and requests",
+            "long_description": "This would cache memos and requests (Encrypted still) on the server until the recipient's device confirms that they've received the message",
+        },
+    },
+    {
+        "id": 10,
+        "active": True,
+        "address": "nano_1rw4ybt4hagog4uyhqd7mnaogeu6e4ik4kdswfbh9g3zfiyp1hz968mufyni",
+        "goal_amount_raw": "1000000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Apple Watch Support (iOS)",
+            "short_description": "Get notifications on your Apple Watch!",
+            "long_description": "This one is pretty technically complicated and would be a lot of work to make it happen, since flutter doesn't have proper apple watch support yet I'd have to write it as a swift extension. I also don't yet own an apple watch to test with which adds to the cost.",
+        },
+    },
+    {
+        "id": 11,
+        "active": True,
+        "address": "nano_3s9dyxh6qm5uody1ou9g6a6g7qseqer1mgrwwoctwdgs37qt3i57w1dwt7wh",
+        "goal_amount_raw": "5000000000000000000000000000000000",
+        "current_amount_raw": "0",
+        "en": {
+            "title": "Desktop / Web Support",
+            "short_description": "Just a *minor* rewrite",
+            "long_description": "This involves rewriting major sections of the app to use more cross platform libraries, and may not be feasible / easier to just start from scratch.",
+        },
+    },
+]
+
+def gen_for_locales(message):
+    final = {}
+    for loc in LOCALES:
+        final[loc] = message
+    return final
 
 
 def get_active_alert(lang: str):
@@ -154,4 +271,33 @@ def get_active_alert(lang: str):
                 retItem[k] = v
             ret.append(retItem)
 
+    return ret
+
+def get_active_funding(lang: str):
+    ret = []
+    for a in ACTIVE_FUNDING:
+        active = a["active"]
+        if active:
+            if lang == 'id' and 'iDD' in a:
+                lang = 'iDD'
+            elif lang not in a:
+                lang = 'en'
+            retItem = {
+                "id": a["id"],
+                "active": a["active"],
+            }
+            if "timestamp" in a:
+                retItem["timestamp"] = a["timestamp"]
+            if "link" in a:
+                retItem["link"] = a["link"]
+            if "address" in a:
+                retItem["address"] = a["address"]
+            if "goal_amount_raw" in a:
+                retItem["goal_amount_raw"] = a["goal_amount_raw"]
+            if "current_amount_raw" in a:
+                retItem["current_amount_raw"] = a["current_amount_raw"]
+            
+            for k, v in a[lang].items():
+                retItem[k] = v
+            ret.append(retItem)
     return ret

@@ -51,6 +51,8 @@ spec:
             value: http://node.perish.co:9076
           - name: WORK_URL
             value: http://workers.perish.co:5555
+          # - name: WORK_URL
+            # value: http://worker1.perish.co:7090
           - name: DEBUG
             value: "1"
           - name: FCM_API_KEY
