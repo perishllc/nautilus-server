@@ -14,3 +14,5 @@ websockets
 python-rapidjson
 aiohttp_cors
 ed25519-blake2b
+nanolib
+nanopy

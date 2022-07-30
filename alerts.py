@@ -98,19 +98,21 @@ LOCALES = ["en", "sv", "es", "tr", "ja", "de", "fr", "nl", "iDD", "ru", "da"]
 ACTIVE_FUNDING = [
     {
         "id": 0,
-        "active": True,
-        "address": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+        "active": False,
+        "show_on_ios": False,
+        "address": "nano_3xnr31q9p8pce5j4qjwnhmfwkry1mgs67x63149zp6kdbcztfmfqjxwb9bw7",
         "goal_amount_raw": "100000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
             "title": "Monthly Server Costs",
             "short_description": "Keep the backend alive!",
-            "long_description": "Running a reliable backend is expensive! I will probably continue to eat this cost if not met, but I unfortunately can't support this on my own forever\n\nIf this goes past 100% I'll work toward adding a redundant backend on an entirely different hosting provider, so that even if there's an outage, the backend will still stay online",
+            "long_description": "This fund goal will be updated each month based on the costs from each previous month. Even if this goal isn't met I'll probably continue to eat this cost, but I unfortunately can't afford this cost indefinitely without support.",
         },
     },
     {
         "id": 1,
-        "active": True,
+        "active": False,
+        "show_on_ios": False,
         "address": "nano_1u844awm5ch3ktwwzpzjfchj54ay5o6a7kyop5jycue7bw5jr117m15tx8oa",
         "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -122,7 +124,8 @@ ACTIVE_FUNDING = [
     },
     {
         "id": 2,
-        "active": True,
+        "active": False,
+        "show_on_ios": False,
         "address": "nano_1f5z6gy3mf6gyyen79sidopxizcp59u6iahcmhtatti3qeh7q7m9w5s548nc",
         "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -135,18 +138,20 @@ ACTIVE_FUNDING = [
     {
         "id": 3,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_14qojirkhwgekfpf1jbqfd58ks7t6rrjtzuaetytkxmmuhdgx5cmjhgr5wu5",
         "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
             "title": "NFC Support",
-            "short_description": "Support using NFC for payments similarly to QR codes (Android Only)",
+            "short_description": "Support using NFC for payments on the receive screen, similar to how using QR codes works",
             # "long_description": "todo",
         },
     },
     {
         "id": 4,
-        "active": True,
+        "active": False,
+        "show_on_ios": False,
         "address": "nano_3mt48meumbxzw3nsnpq43nzrrnx8rb6sjrxtwqdix564htc73hhra4gbuipo",
         "goal_amount_raw": "2000000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -158,7 +163,8 @@ ACTIVE_FUNDING = [
     },
     {
         "id": 5,
-        "active": True,
+        "active": False,
+        "show_on_ios": False,
         "address": "nano_3uzdra7hdf9qb19a3g61jrsyt8zkthexrtyx186oc8auyegpir8ezm6y9sra ",
         "goal_amount_raw": "5000000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -171,6 +177,7 @@ ACTIVE_FUNDING = [
     {
         "id": 6,
         "active": False,
+        "show_on_ios": False,
         "address": "nano_3wneupytd8wxgjrydiq4axoipr9wbpkdycd83bfibemjgmreere1tgnn7ajh",
         "goal_amount_raw": "5000000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -183,6 +190,7 @@ ACTIVE_FUNDING = [
     {
         "id": 7,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_13ddtgi44o3on9j1d6ughjakoe3s9m515q8fasissky7snsomf93cywsiq68",
         "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -195,6 +203,7 @@ ACTIVE_FUNDING = [
     {
         "id": 8,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_1n8syxftoknbadk8k46ou7rstawfmfr8qh1jq1dkuuskrspb9yygkise9drr",
         "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -207,6 +216,7 @@ ACTIVE_FUNDING = [
     {
         "id": 9,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_16uomspu1foykg7mumh39i3iosi73fsy74xfsr6rupiw3wzcrea8tnpax67h",
         "goal_amount_raw": "300000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -219,18 +229,20 @@ ACTIVE_FUNDING = [
     {
         "id": 10,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_1rw4ybt4hagog4uyhqd7mnaogeu6e4ik4kdswfbh9g3zfiyp1hz968mufyni",
         "goal_amount_raw": "1000000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
             "title": "Apple Watch Support (iOS)",
             "short_description": "Get notifications on your Apple Watch!",
-            "long_description": "This one is pretty technically complicated and would be a lot of work to make it happen, since flutter doesn't have proper apple watch support yet I'd have to write it as a swift extension. I also don't yet own an apple watch to test with which adds to the cost.",
+            "long_description": "This one is pretty technically complicated and would be a lot of work to make it happen, since flutter doesn't have proper apple watch support yet I'd have to write it as a swift extension. I also don't own an apple watch to test with which adds to the cost.",
         },
     },
     {
         "id": 11,
         "active": True,
+        "show_on_ios": False,
         "address": "nano_3s9dyxh6qm5uody1ou9g6a6g7qseqer1mgrwwoctwdgs37qt3i57w1dwt7wh",
         "goal_amount_raw": "5000000000000000000000000000000000",
         "current_amount_raw": "0",
@@ -296,6 +308,8 @@ def get_active_funding(lang: str):
                 retItem["goal_amount_raw"] = a["goal_amount_raw"]
             if "current_amount_raw" in a:
                 retItem["current_amount_raw"] = a["current_amount_raw"]
+            if "show_on_ios" in a:
+                retItem["show_on_ios"] = a["show_on_ios"]
             
             for k, v in a[lang].items():
                 retItem[k] = v

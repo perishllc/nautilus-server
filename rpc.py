@@ -14,7 +14,9 @@ allowed_rpc_actions = ["account_balance", "account_block_count", "account_check"
                        "blocks", "block_info", "blocks_info", "block_account", "block_count", "block_count_type",
                        "chain", "frontiers", "frontier_count", "history",
                        "key_expand", "process", "representatives", "republish", "peers", "version", "pending",
-                       "pending_exists", "receivable", "receivable_exists", "accounts_receivable", "price_data", "fcm_update", "active_difficulty", "payment_request", "payment_ack", "payment_memo", "payment_message"]
+                       "pending_exists", "receivable", "receivable_exists", "accounts_receivable", "price_data",
+                       "fcm_update", "active_difficulty", "payment_request", "payment_ack", "payment_memo", "payment_message",
+                       "gift_split_create", "gift_info", "gift_claim", "payment_action"]
 
 class RPC:
     def __init__(self, node_url : str, banano_mode : bool, work_url : str = None, price_prefix : str = None):
@@ -36,20 +38,20 @@ class RPC:
             log.server_logger.exception("exception in json_post")
             return None
 
-    async def get_pending_count(self, r : web.Request, account : str, uid : str = '0') -> int:
-        """This returns how many pending blocks an account has, up to 51, for anti-spam measures"""
+    async def get_receivable_count(self, r : web.Request, account : str, uid : str = '0') -> int:
+        """This returns how many receivable blocks an account has, up to 51, for anti-spam measures"""
         message = {
-            "action":"pending",
+            "action":"receivable",
             "account":account,
             "threshold":str(10**24) if not self.banano_mode else str(10**27),
             "count":51,
             "include_only_confirmed": True
         }
-        log.server_logger.info('sending get_pending_count; %s; %s', self.util.get_request_ip(r), uid)
+        log.server_logger.info('sending get_receivable_count; %s; %s', self.util.get_request_ip(r), uid)
         response = await self.json_post(message)
         if response is None or 'blocks' not in response:
             return 0
-        log.server_logger.debug('received response for pending %s', json.dumps(response))        
+        log.server_logger.debug('received response for receivable %s', json.dumps(response))        
         return len(response['blocks'])
 
     async def rpc_reconnect(self, ws : web.WebSocketResponse, r : web.Response, account : str):
@@ -84,7 +86,7 @@ class RPC:
             response['btc'] = float(price_btc)
             if self.banano_mode:
                 response['nano'] = float(await r.app['rdata'].hget("prices", f"{self.price_prefix}-nano"))
-            response['pending_count'] = await self.get_pending_count(r, account, uid = ws.id)
+            response['pending_count'] = await self.get_receivable_count(r, account, uid = ws.id)
             response = json.dumps(response)
 
             log.server_logger.info(
@@ -131,7 +133,7 @@ class RPC:
             response['btc'] = float(price_btc)
             if self.banano_mode:
                 response['nano'] = float(await r.app['rdata'].hget("prices", f"{self.price_prefix}-nano"))
-            response['pending_count'] = await self.get_pending_count(r, account)
+            response['pending_count'] = await self.get_receivable_count(r, account)
             response = json.dumps(response)
 
             log.server_logger.info(
@@ -215,6 +217,7 @@ class RPC:
 
                 try:
                     prev_block = json.loads(prev_response['blocks'][block['previous']]['contents'])
+                    # prev_block = json.loads(prev_response.get('blocks').get("block").get("previous").get("contents"))
 
                     if prev_block['type'] != 'state' and ('balance' in prev_block):
                         prev_balance = int(prev_block['balance'], 16)

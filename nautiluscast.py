@@ -29,6 +29,11 @@ from alerts import get_active_alert, get_active_funding
 from ed25519_blake2b import BadSignatureError, SigningKey, VerifyingKey
 from binascii import hexlify, unhexlify
 
+# split gifts:
+import requests
+import random
+from nanolib import Block, generate_account_id, generate_account_private_key, get_account_id, generate_seed, get_account_public_key
+import nanopy
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -37,7 +42,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 parser = argparse.ArgumentParser(description="Nautilus Wallet Server")
 parser.add_argument('-b', '--banano', action='store_true', help='Run for BANANO (Kalium-mode)', default=False)
 parser.add_argument('--host', type=str, help='Host to listen on (e.g. 127.0.0.1)', default='127.0.0.1')
-parser.add_argument('--path', type=str, help='(Optional) Path to run application on (for unix socket, e.g. /tmp/natriumapp.sock', default=None)
+parser.add_argument('--path', type=str, help='(Optional) Path to run application on (for unix socket, e.g. /tmp/nautilusapp.sock', default=None)
 parser.add_argument('-p', '--port', type=int, help='Port to listen on', default=5076)
 # parser.add_argument('-ws', '--websocket-url', type=str, help='Nano websocket URI', default='ws://[::1]:7078')
 parser.add_argument('--log-file', type=str, help='Log file location', default='nautiluscast.log')
@@ -53,6 +58,7 @@ try:
     redis_db = int(os.getenv('REDIS_DB', '2'))
     redis_username = os.getenv('REDIS_USERNAME', None)
     redis_password = os.getenv('REDIS_PASSWORD', None)
+    branch_api_key = os.getenv('BRANCH_API_KEY', None)
     log_file = options.log_file
     app_path = options.path
     if app_path is None:
@@ -79,6 +85,7 @@ fcm_api_key = os.getenv('FCM_API_KEY', None)
 fcm_sender_id = os.getenv('FCM_SENDER_ID', None)
 debug_mode = True if int(os.getenv('DEBUG', 1)) != 0 else False
 nonce_timeout_seconds = int(os.getenv('NONCE_TIMEOUT', 100))
+nonce_separator = '^'
 
 # Objects
 
@@ -209,7 +216,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
 
             # adjust counts so nobody can block the node with a huge request
             if 'count' in request_json:
-                if (request_json['count'] < 0) or (request_json['count'] > 3500):
+                if (int(request_json['count']) < 0) or (int(request_json['count']) > 3500):
                     request_json['count'] = 3500
 
             # rpc: account_subscribe (only applies to websocket connections)
@@ -418,162 +425,67 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
             #     pass
                     
             elif request_json['action'] == 'payment_request':
-
-                # check if the nonce is valid
-                # vk = VerifyingKey(unhexlify(public_key))
-                # print(unhexlify(util.address_decode(request_json["requesting_account"])))
-                req_account_bin = unhexlify(util.address_decode(request_json["requesting_account"]))
-                signature = request_json["request_signature"]
-                request_nonce = request_json["request_nonce"]
-                # make sure the nonce is recent:
-                request_epoch_time = int(request_nonce, 16)
-
-                current_epoch_time = int(time.time())
-                if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
-                    # nonce is too old
-                    ret = json.dumps({
-                        'error':'nonce error',
-                        'details': 'nonce is too old'
-                    })
-                else:
-
-                    vk = VerifyingKey(req_account_bin)
-
-                    try:
-                        vk.verify(
-                            sig=unhexlify(signature),
-                            msg=unhexlify(request_nonce),
-                        )
-
-                    except:
-                        print("@@@@@@@@invalid signature@@@@@@@@")
-                        ret = json.dumps({
-                            'error':'sig error',
-                            'details': 'invalid signature'
-                        })
-
+                # check the signature:
+                ret = await validate_signature(request_json.get("requesting_account"), request_json.get("request_signature"), request_json.get("request_nonce"))
+                if ret == None:
+                    ret = await push_payment_request(r, request_json.get("account"), request_json.get("amount_raw"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("local_uuid"))
                     if ret == None:
-                        err = await push_payment_request(r, request_json.get("account"), request_json.get("amount_raw"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("local_uuid"))
-                        if err is not None:
-                            ret = json.dumps({
-                                'error':'fcm token error: ' + str(err),
-                                'details': str(err)
-                            })
-                        else:
-                            ret = json.dumps({
-                                'success':'payment request sent',
-                            })
+                        ret = json.dumps({
+                            'success':'payment request sent',
+                        })
     
             elif request_json['action'] == 'payment_ack':
 
-                err = await push_payment_ack(r, request_json["uuid"], request_json["account"])
-                if err is not None:
-                    ret = json.dumps({
-                        'error':'fcm token error',
-                        'details': str(err)
-                    })
-                else:
+                ret = await push_payment_ack(r, request_json["uuid"], request_json["account"])
+                if ret == None:
                     ret = json.dumps({
                         'success':'payment_ack sent',
                     })
                 # send again to the sender:
-                err = await push_payment_ack(r, request_json["uuid"], request_json["requesting_account"])
-                if err is not None:
-                    ret = json.dumps({
-                        'error':'fcm token error',
-                        'details': str(err)
-                    })
-                else:
+                ret = await push_payment_ack(r, request_json["uuid"], request_json["requesting_account"])
+                if ret == None:
                     ret = json.dumps({
                         'success':'payment_ack sent',
                     })
             
             elif request_json['action'] == 'payment_memo':
-                # check if the nonce is valid
-                req_account_bin = unhexlify(util.address_decode(request_json["requesting_account"]))
-                signature = request_json["request_signature"]
-                request_nonce = request_json["request_nonce"]
-                # make sure the nonce is recent:
-                request_epoch_time = int(request_nonce, 16)
+                # check the signature:
+                ret = await validate_signature(request_json.get("requesting_account"), request_json.get("request_signature"), request_json.get("request_nonce"))
 
-                current_epoch_time = int(time.time())
-                if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
-                    # nonce is too old
-                    ret = json.dumps({
-                        'error':'nonce error',
-                        'details': 'nonce is too old'
-                    })
-                else:
-
-                    vk = VerifyingKey(req_account_bin)
-
-                    try:
-                        vk.verify(
-                            sig=unhexlify(signature),
-                            msg=unhexlify(request_nonce),
-                        )
-                    except:
-                        print("@@@@@@@@invalid signature@@@@@@@@")
-                        ret = json.dumps({
-                            'error':'sig error',
-                            'details': 'invalid signature'
-                        })
-
+                if ret == None:
+                    ret = await push_payment_memo(r, request_json.get("account"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("block"), request_json.get("local_uuid"))
                     if ret == None:
-                        err = await push_payment_memo(r, request_json.get("account"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("block"), request_json.get("local_uuid"))
-                        if err is not None:
-                            ret = json.dumps({
-                                'error':'fcm token error',
-                                'details': str(err)
-                            })
-                        else:
-                            ret = json.dumps({
-                                'success':'payment memo sent',
-                            })
+                        ret = json.dumps({
+                            'success':'payment memo sent',
+                        })
 
             elif request_json['action'] == 'payment_message':
-                # check if the nonce is valid
-                req_account_bin = unhexlify(util.address_decode(request_json["requesting_account"]))
-                signature = request_json["request_signature"]
-                request_nonce = request_json["request_nonce"]
-                # make sure the nonce is recent:
-                request_epoch_time = int(request_nonce, 16)
-
-                current_epoch_time = int(time.time())
-                if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
-                    # nonce is too old
-                    ret = json.dumps({
-                        'error':'nonce error',
-                        'details': 'nonce is too old'
-                    })
-                else:
-
-                    vk = VerifyingKey(req_account_bin)
-
-                    try:
-                        vk.verify(
-                            sig=unhexlify(signature),
-                            msg=unhexlify(request_nonce),
-                        )
-
-                    except:
-                        print("@@@@@@@@invalid signature@@@@@@@@")
-                        ret = json.dumps({
-                            'error':'sig error',
-                            'details': 'invalid signature'
-                        })
-
+                # check the signature:
+                ret = await validate_signature(request_json.get("requesting_account"), request_json.get("request_signature"), request_json.get("request_nonce"))
+                if ret == None:
+                    ret = await push_payment_message(r, request_json.get("account"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("local_uuid"))
                     if ret == None:
-                        err = await push_payment_message(r, request_json.get("account"), request_json.get("requesting_account"), request_json.get("memo_enc"), request_json.get("local_uuid"))
-                        if err is not None:
-                            ret = json.dumps({
-                                'error':'fcm token error',
-                                'details': str(err)
-                            })
-                        else:
-                            ret = json.dumps({
-                                'success':'payment memo sent',
-                            })
+                        ret = json.dumps({
+                            'success':'payment memo sent',
+                        })
+            elif request_json['action'] == 'gift_split_create':
+
+                # # check the signature:
+                # ret = await validate_signature(request_json.get("requesting_account"), request_json.get("request_signature"), request_json.get("request_nonce"))
+                # if ret == None:
+                #     pass
+
+                ret = await gift_split_create(r, request_json.get("seed"), request_json.get("split_amount_raw"), request_json.get("memo"), request_json.get("requesting_account"))
+                if ret != None:
+                    ret = json.dumps({
+                        'success': True,
+                        'link': ret["link"],
+                        'gift_data': ret["gift_data"],
+                    })
+            elif request_json['action'] == 'gift_info':
+                ret = await gift_info(r, request_json.get("gift_uuid"), request_json.get("requesting_account"), request_json.get("requesting_device_uuid"))
+            elif request_json['action'] == 'gift_claim':
+                ret = await gift_claim(r, request_json.get("gift_uuid"), request_json.get("requesting_account"), request_json.get("requesting_device_uuid"))
             
             # rpc: fallthrough and error catch
             else:
@@ -670,6 +582,450 @@ async def funding_api(r: web.Request):
 
     return web.json_response(data=alerts)
 
+
+async def branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw, giftUUID):
+    url = "https://api2.branch.io/v1/url"
+    headers = {'Content-Type': 'application/json'}
+
+    global branch_api_key
+
+    data = json.dumps({
+    "branch_key": branch_api_key,
+    "channel": f"nautilus-backend",
+    "feature": f"splitgift",
+    "stage": "new share",
+    "data":{
+        "seed": f"{paperWalletSeed}",
+        "address": f"{paperWalletAccount}",
+        "memo": f"{memo}",
+        "senderAddress": f"{fromAddress}",
+        "signature": f"sig",
+        "nonce": f"nonce",
+        "from_address": f"{fromAddress}",
+        "amount_raw": f"{amountRaw}",
+        "gift_uuid": f"{giftUUID}",
+        "$canonical_identifier": f"server/splitgift/{paperWalletSeed}",
+        "$og_title":f"Nautilus Gift Card",
+        "$og_description":f"Get the app to open this gift card!",
+     }})
+
+    resp = requests.post(url, headers=headers, data=data)
+    return resp
+
+async def gift_api_get(r: web.Request):
+
+    # get the gift data from the db
+    giftData = await r.app['rdata'].hget("gift_data", r.match_info["gift_uuid"])
+    giftData = json.loads(giftData)
+    giftUUID = giftData.get("gift_uuid")
+    seed = giftData.get("seed")
+    fromAddress = giftData.get("from_address")
+    splitAmountRaw = giftData.get("split_amount_raw")
+    memo = giftData.get("memo")
+
+    # check if a link already exists:
+    splitID = util.get_request_ip(r) + nonce_separator + giftUUID
+    linkData = await r.app['rdata'].hget("split_gifts", splitID)
+    if linkData != None and json.loads(linkData).get("link") != None:
+        return web.HTTPTemporaryRedirect(json.loads(linkData).get("link"))
+
+    if giftUUID == None:
+        return web.json_response(data={"error": "gift not found!"})
+
+    giftSeed = seed
+    giftAccount = generate_account_id(giftSeed, 0).replace("xrb_", "nano_")
+    giftPrivateKey = generate_account_private_key(giftSeed, 0)
+
+    # generate new seed and address:
+    paperWalletSeed = generate_seed()
+    paperWalletAccount = generate_account_id(paperWalletSeed, 0).replace("xrb_", "nano_")
+    # paperWalletPrivateKey = generate_account_private_key(paperWalletSeed, 0)
+
+    global branch_api_key
+
+    if branch_api_key == None:
+        return web.json_response(data={"error": "branch_api_key not set"})
+
+    # create the branch link, then load the private key using the seed from the db:
+    branchResponse = await branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw=splitAmountRaw)
+
+    if branchResponse == None or branchResponse.status_code != 200:
+        # error creating link:
+        return web.json_response(data={"error": "error creating branch link"})
+    
+    # send to the paper wallet from the paper wallet seed:
+
+    # receive any receivable funds from the paper wallet first:
+
+    giftWalletBalanceInt = None
+    
+    # get account_info:
+    response = await rpc.json_post({"action": "account_info", "account": giftAccount})
+    account_not_opened = False
+    if response.get("error") == "Account not found":
+        account_not_opened = True
+    elif response.get("error") != None:
+        return web.json_response(data=json.dumps({"error": response.get("error")}))
+    else:
+        giftWalletBalanceInt = int(response.get("balance"))
+
+    frontier = None
+    if not account_not_opened:
+        frontier = response.get("frontier")
+    
+    # get the receivable blocks:
+    receivable_resp = await rpc.json_post({"action": "receivable", "source": True, "count": 10, "include_active": True, "account": giftAccount})
+    if receivable_resp.get("blocks") == "":
+        receivable_resp["blocks"] = {}
+    
+    # receive each block:
+    for hash in receivable_resp.get("blocks").keys():
+        item = receivable_resp["blocks"][hash]
+        if (frontier != None):
+            giftWalletBalanceInt = int(item.get("amount"))
+            receiveBlock = {
+                "type": "state",
+                "account": giftAccount,
+                "previous": frontier,
+                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+                "balance": giftWalletBalanceInt,
+                "link": hash,
+                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+            }
+            signature = nanopy.sign(key=giftPrivateKey, block=receiveBlock)
+            receiveBlock["signature"] = signature
+            
+            resp = await rpc.process_defer(r, "fake_uid", receiveBlock, True, subtype="receive")
+            if resp.get("hash") != None:
+                frontier = resp.get("hash")
+                # totalTransferred += BigInt.parse(item.amount!)
+        else:
+            giftWalletBalanceInt = int(item.get("amount"))
+            openBlock = {
+                "type": "state",
+                "account": giftAccount,
+                "previous": "0000000000000000000000000000000000000000000000000000000000000000",
+                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+                "balance": giftWalletBalanceInt,
+                "link": hash,
+                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+            }
+            signature = nanopy.sign(key=giftPrivateKey, block=openBlock)
+            openBlock["signature"] = signature
+            
+            resp = await rpc.process_defer(r, "fake_uid", openBlock, True, subtype="open")
+            if resp.get("hash") != None:
+                frontier = resp.get("hash")
+                # totalTransferred += BigInt.parse(item.amount!);
+    
+    # Hack that waits for blocks to be confirmed
+    time.sleep(1)
+
+
+    # get the gift frontier:
+    giftFrontier = frontier
+
+    frontiers_resp = await rpc.json_post({"action": "frontiers", "count": 1, "account": giftAccount})
+    if frontiers_resp.get("frontiers") == "":
+        giftFrontier = frontier
+    else:
+        returnedFrontiers = frontiers_resp.get("frontiers")
+        for addr in returnedFrontiers.keys():
+            giftFrontier = returnedFrontiers[addr]
+            break
+    
+    # send the split amount to the paper wallet:
+    # send from giftSeed -> paperWalletAccount
+
+    if splitAmountRaw == None:
+        return web.json_response(data={"error": "splitAmountRaw is None"})
+
+    # get account_info:
+    if giftWalletBalanceInt == None:
+        return web.json_response(data=json.dumps({"error": "giftWalletBalanceInt shouldn't be None"}))
+    elif giftWalletBalanceInt == 0:
+        # the gift wallet is empty, so we can't send anything:
+        return web.json_response(data=json.dumps({"error": "Gift wallet is empty!"}))
+
+    newBalanceRaw = str(int(giftWalletBalanceInt) - int(splitAmountRaw))
+
+    if newBalanceRaw == None:
+        return web.json_response(data={"error": "newBalanceRaw is None"})
+    elif int(newBalanceRaw) < 0:
+        # send whatever is left in the gift wallet:
+        newBalanceRaw = "0"
+
+    sendBlock = {
+        "type": "state",
+        "account": giftAccount,
+        "previous": giftFrontier,
+        "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+        "balance": newBalanceRaw,
+        "destination": paperWalletAccount,
+        "link": get_account_public_key(account_id=paperWalletAccount),
+        "link_as_account": paperWalletAccount
+    }
+    signature = nanopy.sign(key=giftPrivateKey, block=sendBlock)
+    sendBlock["signature"] = signature
+
+    resp = await rpc.process_defer(r, "fake_uid", sendBlock, True, subtype="send")
+    
+    if resp.get("hash") == None:
+        return web.json_response(data={"error": "error sending to paper wallet: " + str(resp)})
+    else:
+        # cache the paper wallet link:
+        branchLink = branchResponse.json().get("url")
+
+        splitLinkData = json.dumps({
+            "gift_uuid": giftUUID,
+            "link": branchLink,
+            "paper_wallet_account": paperWalletAccount,
+            "paper_wallet_seed": paperWalletSeed,
+        })
+        splitID = util.get_request_ip(r) + nonce_separator + giftUUID
+        await r.app['rdata'].hset("split_gifts", splitID, splitLinkData)
+        return web.HTTPTemporaryRedirect(branchLink)
+
+# async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddress):
+
+#     giftUUID = str(uuid.uuid4())[-12:]
+#     giftData = json.dumps({
+#         "seed": seed,
+#         "split_amount_raw": splitAmountRaw,
+#         "memo": memo,
+#         "from_address": fromAddress,
+#         "gift_uuid": giftUUID,
+#     })
+#     await r.app['rdata'].hset("gift_data", giftUUID, giftData)
+#     link = f"https://nautilus.perish.co/gift/{giftUUID}"
+#     return {"link": link, "gift_data": giftData}
+
+
+
+
+async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddress):
+
+    giftUUID = str(uuid.uuid4())[-12:]
+    giftData = json.dumps({
+        "seed": seed,
+        "split_amount_raw": splitAmountRaw,
+        "memo": memo,
+        "from_address": fromAddress,
+        "gift_uuid": giftUUID,
+    })
+    await r.app['rdata'].hset("gift_data", giftUUID, giftData)
+    
+    paperWalletAccount = generate_account_id(seed, 0).replace("xrb_", "nano_")
+
+    branchResponse = await branch_create_link("", "", memo, fromAddress, amountRaw=splitAmountRaw, giftUUID=giftUUID)
+    if branchResponse == None or branchResponse.status_code != 200:
+        return {"error": "error creating branch link"}
+    
+    branchLink = branchResponse.json().get("url")
+    return {"link": branchLink, "gift_data": giftData}
+
+
+async def gift_info(r: web.Request, giftUUID, requestingAccount, requestingDeviceUUID):
+
+    # check if the gift exists:
+    giftData = await r.app['rdata'].hget("gift_data", giftUUID)
+    if giftData == None:
+        return json.dumps({"error": "gift does not exist"})
+    giftData = json.loads(giftData)
+
+    if requestingDeviceUUID == None or requestingDeviceUUID == "":
+        return json.dumps({"error": "requestingDeviceUUID is None"})
+    
+    # check if it was claimed by this user:
+    # splitID = util.get_request_ip(r) + nonce_separator + giftUUID + nonce_separator + requestingAccount
+    splitID = requestingDeviceUUID + nonce_separator + giftUUID
+    claimed = await r.app['rdata'].hget("gift_claims", splitID)
+    if claimed != None:
+        return json.dumps({"error": "gift has already been claimed"})
+
+    # check the balance of the gift wallet:
+    giftWalletSeed = giftData.get("seed")
+    giftWalletAccount = generate_account_id(giftWalletSeed, 0).replace("xrb_", "nano_")
+
+    # giftWalletBalance = await rpc.json_post({"action": "account_balance", "account": giftWalletAccount})
+
+    amount = giftData.get("split_amount_raw")
+    if amount == None:
+        amount = giftData.get("amount_raw")
+
+    returnable = {
+        "gift_uuid": giftUUID,
+        "amount_raw": amount,
+        "memo": giftData.get("memo"),
+        "from_address": giftData.get("from_address"),
+    }
+
+    # if giftWalletBalance.get("balance") != None:
+    #     returnable["gift_wallet_balance"] = giftWalletBalance.get("balance")
+
+    return json.dumps({"success": True, "gift_data": returnable})
+
+async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDeviceUUID):
+
+    # get the gift data from the db
+    giftData = await r.app['rdata'].hget("gift_data", giftUUID)
+    giftData = json.loads(giftData)
+    giftUUID = giftData.get("gift_uuid")
+    seed = giftData.get("seed")
+    fromAddress = giftData.get("from_address")
+    splitAmountRaw = giftData.get("split_amount_raw")
+    amountRaw = giftData.get("amount_raw")
+    memo = giftData.get("memo")
+
+    sendAmountRaw = None
+    if splitAmountRaw != None:
+        sendAmountRaw = splitAmountRaw
+    elif amountRaw != None:
+        sendAmountRaw = amountRaw
+
+    if sendAmountRaw == None:
+        return json.dumps({"error": "sendAmountRaw is None"})
+
+
+    # check the gift card balance and receive any incoming funds:
+    if giftUUID == None:
+        return {"error": "gift not found!"}
+
+    if requestingDeviceUUID == None or requestingDeviceUUID == "":
+        return json.dumps({"error": "requestingDeviceUUID is None"})
+
+    # check if it was claimed by this user:
+    # splitID = util.get_request_ip(r) + nonce_separator + giftUUID + nonce_separator + requestingAccount
+    splitID = requestingDeviceUUID + nonce_separator + giftUUID
+    claimed = await r.app['rdata'].hget("gift_claims", splitID)
+    if claimed != None:
+        return json.dumps({"error": "gift has already been claimed"})
+
+        
+
+    giftSeed = seed
+    giftAccount = generate_account_id(giftSeed, 0).replace("xrb_", "nano_")
+    giftPrivateKey = generate_account_private_key(giftSeed, 0)
+
+    # receive any receivable funds from the paper wallet first:
+
+    giftWalletBalanceInt = None
+    
+    # get account_info:
+    response = await rpc.json_post({"action": "account_info", "account": giftAccount})
+    account_not_opened = False
+    if response.get("error") == "Account not found":
+        account_not_opened = True
+    elif response.get("error") != None:
+        return json.dumps({"error": response.get("error")})
+    else:
+        giftWalletBalanceInt = int(response.get("balance"))
+
+    frontier = None
+    if not account_not_opened:
+        frontier = response.get("frontier")
+    
+    # get the receivable blocks:
+    receivable_resp = await rpc.json_post({"action": "receivable", "source": True, "count": 10, "include_active": True, "account": giftAccount})
+    if receivable_resp.get("blocks") == "":
+        receivable_resp["blocks"] = {}
+    
+    # receive each block:
+    for hash in receivable_resp.get("blocks").keys():
+        item = receivable_resp["blocks"][hash]
+        if (frontier != None):
+            giftWalletBalanceInt = int(item.get("amount"))
+            receiveBlock = {
+                "type": "state",
+                "account": giftAccount,
+                "previous": frontier,
+                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+                "balance": giftWalletBalanceInt,
+                "link": hash,
+                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+            }
+            signature = nanopy.sign(key=giftPrivateKey, block=receiveBlock)
+            receiveBlock["signature"] = signature
+            
+            resp = await rpc.process_defer(r, "fake_uid", receiveBlock, True, subtype="receive")
+            if resp.get("hash") != None:
+                frontier = resp.get("hash")
+                # totalTransferred += BigInt.parse(item.amount!)
+        else:
+            giftWalletBalanceInt = int(item.get("amount"))
+            openBlock = {
+                "type": "state",
+                "account": giftAccount,
+                "previous": "0000000000000000000000000000000000000000000000000000000000000000",
+                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+                "balance": giftWalletBalanceInt,
+                "link": hash,
+                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+            }
+            signature = nanopy.sign(key=giftPrivateKey, block=openBlock)
+            openBlock["signature"] = signature
+            
+            resp = await rpc.process_defer(r, "fake_uid", openBlock, True, subtype="open")
+            if resp.get("hash") != None:
+                frontier = resp.get("hash")
+                # totalTransferred += BigInt.parse(item.amount!);
+    
+    # Hack that waits for blocks to be confirmed
+    time.sleep(1)
+
+
+    # get the gift frontier:
+    giftFrontier = frontier
+
+    frontiers_resp = await rpc.json_post({"action": "frontiers", "count": 1, "account": giftAccount})
+    if frontiers_resp.get("frontiers") == "":
+        giftFrontier = frontier
+    else:
+        returnedFrontiers = frontiers_resp.get("frontiers")
+        for addr in returnedFrontiers.keys():
+            giftFrontier = returnedFrontiers[addr]
+            break
+    
+    # send sendAmountRaw to the requester:
+    # get account_info:
+    if giftWalletBalanceInt == None:
+        return {"error": "giftWalletBalanceInt shouldn't be None"}
+    elif giftWalletBalanceInt == 0:
+        # the gift wallet is empty, so we can't send anything:
+        return {"error": "Gift wallet is empty!"}
+
+    newBalanceRaw = str(int(giftWalletBalanceInt) - int(sendAmountRaw))
+
+    if newBalanceRaw == None:
+        return {"error": "newBalanceRaw is None"}
+    elif int(newBalanceRaw) < 0:
+        # send whatever is left in the gift wallet:
+        newBalanceRaw = "0"
+
+    # create the send block:
+    sendBlock = {
+        "type": "state",
+        "account": giftAccount,
+        "previous": giftFrontier,
+        "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+        "balance": newBalanceRaw,
+        "destination": requestingAccount,
+        "link": get_account_public_key(account_id=requestingAccount),
+        "link_as_account": requestingAccount
+    }
+    signature = nanopy.sign(key=giftPrivateKey, block=sendBlock)
+    sendBlock["signature"] = signature
+
+    resp = await rpc.process_defer(r, "fake_uid", sendBlock, True, subtype="send")
+    
+    if resp.get("hash") == None:
+        return json.dumps({"error": "error sending to paper wallet: " + str(resp)})
+    
+    # cache the response for this UUID:
+    await r.app['rdata'].hset("gift_claims", splitID, "claimed")
+
+    return json.dumps({"success": True})
+
 async def callback_ws(app: web.Application, data: dict):   
     if 'block' in data and 'link_as_account' in data['block']:
         account = data['block']['link_as_account']
@@ -691,25 +1047,67 @@ async def callback_ws(app: web.Application, data: dict):
         #         log.server_logger.info(f'emitting donation event for amount: {data["amount"]}')
         #         await sio.emit('donation_event', {'amount':data['amount']})
 
+# allow sends with the original uuid if they are valid:
+# TODO:
 async def check_local_uuid(local_uuid):
     new_uuid = str(uuid.uuid4())
     if local_uuid is None:
         return new_uuid
     # TODO:
     return new_uuid
-    
+
+# todo:
+# async def store_request(r, uuid, data):
+#     await r.app['rdata'].set(uuid, json.dumps(data))
+#     await r.app['rdata'].expire(uuid, 60 * 60 * 24)
+#     return uuid
+
+
+async def validate_signature(requesting_account, request_signature, request_nonce):
+    ret = None
+    # check if the nonce is valid
+    req_account_bin = unhexlify(util.address_decode(requesting_account))
+
+    nonce_fields = request_nonce.split(nonce_separator)
+    # make sure the nonce is recent:
+    request_epoch_time = int(nonce_fields[0], 16)
+
+    current_epoch_time = int(time.time())
+    if (current_epoch_time - request_epoch_time) > nonce_timeout_seconds:
+        # nonce is too old
+        ret = json.dumps({
+            'error':'nonce error',
+            'details': 'nonce is too old'
+        })
+        return ret
+
+    vk = VerifyingKey(req_account_bin)
+    try:
+        vk.verify(
+            sig=unhexlify(request_signature),
+            msg=unhexlify(request_nonce),
+        )
+    except:
+        ret = json.dumps({
+            'error':'sig error',
+            'details': 'invalid signature'
+        })
+    return ret
 
 async def push_payment_request(r, account, amount_raw, requesting_account, memo_enc, local_uuid):
 
-    # time.sleep(2)
-    # Push FCM notification if this is a send
     if fcm_api_key is None:
-        return "no_api_key"
-    send_amount = int(amount_raw)
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_api_key"
+        })
     
     fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
-    if (fcm_tokens_v2 == None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
 
     # get username if it exists:
     shorthand_account = await r.app['rdata'].hget("usernames", f"{requesting_account}")
@@ -726,7 +1124,7 @@ async def push_payment_request(r, account, amount_raw, requesting_account, memo_
     request_time = str(int(time.time()))
 
     # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
-    notification_title = f"Request for {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
+    notification_title = f"Request for {util.raw_to_nano(int(amount_raw))} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
     notification_body = f"Open Nautilus to pay this request."
     for t2 in fcm_tokens_v2:
         message = aiofcm.Message(
@@ -744,7 +1142,7 @@ async def push_payment_request(r, account, amount_raw, requesting_account, memo_
                 "uuid": request_uuid,
                 "local_uuid": local_uuid,
                 "memo_enc": str(memo_enc),
-                "amount_raw": str(send_amount),
+                "amount_raw": str(amount_raw),
                 "requesting_account": requesting_account,
                 "requesting_account_shorthand": shorthand_account,
                 "request_time": request_time
@@ -760,7 +1158,10 @@ async def push_payment_request(r, account, amount_raw, requesting_account, memo_
 
     fcm_tokens_v2 = set(await get_fcm_tokens(requesting_account, r, v2=True))
     if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
 
     # push notifications
     fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
@@ -776,7 +1177,7 @@ async def push_payment_request(r, account, amount_raw, requesting_account, memo_
                 "memo_enc": str(memo_enc),
                 "uuid": request_uuid,
                 "local_uuid": local_uuid,
-                "amount_raw": str(send_amount),
+                "amount_raw": str(amount_raw),
                 "requesting_account": requesting_account,
                 "requesting_account_shorthand": shorthand_account,
                 "request_time": request_time
@@ -788,13 +1189,18 @@ async def push_payment_request(r, account, amount_raw, requesting_account, memo_
 
 async def push_payment_message(r, account, requesting_account, memo_enc, local_uuid):
 
-    # Push FCM notification if this is a send
     if fcm_api_key is None:
-        return "no_api_key"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_api_key"
+        })
     
     fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
-    if (fcm_tokens_v2 == None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+    if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
 
     # get username if it exists:
     shorthand_account = await r.app['rdata'].hget("usernames", f"{requesting_account}")
@@ -844,7 +1250,10 @@ async def push_payment_message(r, account, requesting_account, memo_enc, local_u
 
     fcm_tokens_v2 = set(await get_fcm_tokens(requesting_account, r, v2=True))
     if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
 
     # push notifications
     fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
@@ -868,18 +1277,23 @@ async def push_payment_message(r, account, requesting_account, memo_enc, local_u
             content_available=True
         )
         await fcm.send_message(message)
+    return None
 
 
 async def push_payment_ack(r, request_uuid, account):
 
-    # time.sleep(2)
-    # Push FCM notification if this is a send
     if fcm_api_key is None:
-        return "no_api_key"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_api_key"
+        })
     
     fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
     if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
     
     # push notifications
     fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
@@ -900,16 +1314,22 @@ async def push_payment_ack(r, request_uuid, account):
             content_available=True
         )
         await fcm.send_message(message)
+    return None
 
 async def push_payment_memo(r, account, requesting_account, memo_enc, block, local_uuid):
 
-    # Push FCM notification if this is a send
     if fcm_api_key is None:
-        return "no_api_key"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_api_key"
+        })
     
     fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
     if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
-        return "no_tokens"
+        return json.dumps({
+            'error':'fcm token error',
+            'details': "no_tokens"
+        })
     
     # push notifications
     fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
@@ -969,6 +1389,7 @@ async def push_payment_memo(r, account, requesting_account, memo_enc, block, loc
             content_available=True
         )
         await fcm.send_message(message)
+    return None
 
 async def callback_retro(request_json, app):
     try:
@@ -1218,10 +1639,19 @@ async def init_app():
     # HTTP API
     users_resource = cors.add(app.router.add_resource("/api"))
     cors.add(users_resource.add_route("POST", http_api))
+
+    # alerts:
     alerts_resource = cors.add(app.router.add_resource("/alerts/{lang}"))
     cors.add(alerts_resource.add_route("GET", alerts_api))
+
+    # funding:
     funding_resource = cors.add(app.router.add_resource("/funding/{lang}"))
     cors.add(funding_resource.add_route("GET", funding_api))
+
+    # gift endpoints:
+    gift_resource = cors.add(app.router.add_resource("/gift/{gift_uuid}"))
+    cors.add(gift_resource.add_route("GET", gift_api_get))
+
     app.on_startup.append(open_redis)
     app.on_shutdown.append(close_redis)
 
