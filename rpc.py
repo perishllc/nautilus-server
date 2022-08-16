@@ -34,8 +34,9 @@ class RPC:
                         log.server_logger.error('Received status code %d from request %s', resp.status, json.dumps(request_json))
                         raise Exception
                     return await resp.json(content_type=None)
-        except Exception:
+        except Exception as e:
             log.server_logger.exception("exception in json_post")
+            print(e)
             return None
 
     async def get_receivable_count(self, r : web.Request, account : str, uid : str = '0') -> int:

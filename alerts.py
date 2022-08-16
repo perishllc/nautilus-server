@@ -98,7 +98,7 @@ LOCALES = ["en", "sv", "es", "tr", "ja", "de", "fr", "nl", "iDD", "ru", "da"]
 ACTIVE_FUNDING = [
     {
         "id": 0,
-        "active": False,
+        "active": True,
         "show_on_ios": False,
         "address": "nano_3xnr31q9p8pce5j4qjwnhmfwkry1mgs67x63149zp6kdbcztfmfqjxwb9bw7",
         "goal_amount_raw": "100000000000000000000000000000000",
@@ -140,25 +140,24 @@ ACTIVE_FUNDING = [
         "active": True,
         "show_on_ios": False,
         "address": "nano_14qojirkhwgekfpf1jbqfd58ks7t6rrjtzuaetytkxmmuhdgx5cmjhgr5wu5",
-        "goal_amount_raw": "500000000000000000000000000000000",
+        "goal_amount_raw": "200000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
-            "title": "NFC Support",
-            "short_description": "Support using NFC for payments on the receive screen, similar to how using QR codes works",
+            "title": "Login with Nautilus",
+            "short_description": "Authentication scheme for logging in with Nautilus",
             # "long_description": "todo",
         },
     },
     {
         "id": 4,
-        "active": False,
+        "active": True,
         "show_on_ios": False,
         "address": "nano_3mt48meumbxzw3nsnpq43nzrrnx8rb6sjrxtwqdix564htc73hhra4gbuipo",
         "goal_amount_raw": "2000000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
-            "title": "Rent",
-            "short_description": "Allow me to work on Nautilus, Perishable full-time",
-            "long_description": "I love working on these projects, and it'd mean so much if I could work on it full time. If this category is met I'll be putting all of my time into nautilus / perishable",
+            "title": "Security Audit",
+            "short_description": "Get the code base audited by a security firm",
         },
     },
     {
