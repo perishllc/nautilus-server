@@ -56,6 +56,11 @@ spec:
               secretKeyRef:
                 name: nautilus
                 key: branch_api_key
+          - name: HCAPTCHA_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: nautilus
+                key: hcaptcha_secret_key
           # - name: WORK_URL
             # value: http://worker1.perish.co:7090
           - name: DEBUG

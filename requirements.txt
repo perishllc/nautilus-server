@@ -16,3 +16,4 @@ aiohttp_cors
 ed25519-blake2b
 nanolib
 nanopy
+PyJWT[crypto]==2.4.0

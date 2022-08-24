@@ -7,6 +7,10 @@ import sys
 import requests
 from rpc import RPC, allowed_rpc_actions
 
+# app check:
+import jwt
+from jwt import PyJWKClient
+
 rpc_url = os.getenv('RPC_URL', 'http://[::1]:7076')
 work_url = os.getenv('WORK_URL', None)
 rpc = RPC(rpc_url, False, work_url=work_url, price_prefix='coingecko:nano')
@@ -73,6 +77,15 @@ def funding_balances():
         if response is not None:
             balance = int(response['balance']) + int(response['receivable'])
             rdata.hset("funding_balances", address, balance)
+
+# def appcheck_keys(token):
+#     # Obtain the Firebase App Check Public Keys
+#     # Note: It is not recommended to hard code these keys as they rotate,
+#     # but you should cache them for up to 6 hours.
+#     url = "https://firebaseappcheck.googleapis.com/v1beta/jwks"
+
+#     jwks_client = PyJWKClient(url)
+#     signing_key = jwks_client.get_signing_key_from_jwt(token)
 
 
 

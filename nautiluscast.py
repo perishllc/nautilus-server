@@ -2,6 +2,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import jwt
+from jwt import PyJWKClient
+
 import argparse
 import asyncio
 import ipaddress
@@ -59,6 +62,7 @@ try:
     redis_username = os.getenv('REDIS_USERNAME', None)
     redis_password = os.getenv('REDIS_PASSWORD', None)
     branch_api_key = os.getenv('BRANCH_API_KEY', None)
+    hcaptcha_secret_key = os.getenv('HCAPTCHA_SECRET_KEY', None)
     log_file = options.log_file
     app_path = options.path
     if app_path is None:
@@ -175,12 +179,57 @@ async def get_fcm_tokens(account : str, r : web.Request, v2 : bool = False) -> l
     await redisInst.set(account, json.dumps(new_token_list))
     return new_token_list['data']
 
+
+# App Check:
+def verify_app_check(token):
+    if token is None:
+        return None
+
+    # Obtain the Firebase App Check Public Keys
+    # Note: It is not recommended to hard code these keys as they rotate,
+    # but you should cache them for up to 6 hours.
+    url = "https://firebaseappcheck.googleapis.com/v1beta/jwks"
+
+    jwks_client = PyJWKClient(url)
+    signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+    header = jwt.get_unverified_header(token)
+    # Ensure the token's header uses the algorithm RS256
+    if header.get('alg') != 'RS256':
+        return None
+    # Ensure the token's header has type JWT
+    if header.get('typ') != 'JWT':
+        return None
+
+    payload = {}
+    try:
+        # Verify the signature on the App Check token
+        # Ensure the token is not expired
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            # Ensure the token's audience matches your project
+            audience="projects/" + "871480363204",
+            # Ensure the token is issued by App Check
+            issuer="https://firebaseappcheck.googleapis.com/" + \
+            "871480363204",
+        )
+    except:
+        print(f'Unable to verify the token')
+
+    # The token's subject will be the app ID, you may optionally filter against
+    # an allow list
+    return payload.get('sub')
+
 ### END Utility functions
+
+
+
 
 # Primary handler for all websocket connections
 async def handle_user_message(r : web.Request, message : str, ws : web.WebSocketResponse = None):
     """Process data sent by client"""
-    print(message)
     address = util.get_request_ip(r)
     uid = ws.id if ws is not None else '0'
     now = int(round(time.time() * 1000))
@@ -477,7 +526,7 @@ async def handle_user_message(r : web.Request, message : str, ws : web.WebSocket
                 # if ret == None:
                 #     pass
 
-                ret = await gift_split_create(r, request_json.get("seed"), request_json.get("split_amount_raw"), request_json.get("memo"), request_json.get("requesting_account"))
+                ret = await gift_split_create(r, request_json.get("seed"), request_json.get("split_amount_raw"), request_json.get("memo"), request_json.get("requesting_account"), request_json.get("require_captcha"))
                 if ret != None:
                     ret = json.dumps({
                         'success': True,
@@ -624,11 +673,19 @@ async def handoff_api(r: web.Request):
     # return web.json_response(data={})
 
 
-async def branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw, giftUUID):
+async def branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw, giftUUID, requireCaptcha):
     url = "https://api2.branch.io/v1/url"
     headers = {'Content-Type': 'application/json'}
 
     global branch_api_key
+
+    giftDescription = "Get the app to open this gift card!"
+
+    if (int(amountRaw) > 1000000000000000000000000000000):
+        # more than 1 NANO:
+        formattedAmount = str(int(amountRaw) / 1000000000000000000000000000000)
+        giftDescription = f"Someone sent you {formattedAmount} NANO! Get the app to open this gift card!"
+
 
     data = json.dumps({
     "branch_key": branch_api_key,
@@ -645,187 +702,188 @@ async def branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddr
         "from_address": f"{fromAddress}",
         "amount_raw": f"{amountRaw}",
         "gift_uuid": f"{giftUUID}",
+        "require_captcha": f"{requireCaptcha}",
         "$canonical_identifier": f"server/splitgift/{paperWalletSeed}",
-        "$og_title":f"Nautilus Gift Card",
-        "$og_description":f"Get the app to open this gift card!",
+        "$og_title": f"Nautilus Wallet",
+        "$og_description": giftDescription,
      }})
 
     resp = requests.post(url, headers=headers, data=data)
     return resp
 
-async def gift_api_get(r: web.Request):
+# async def gift_api_get(r: web.Request):
 
-    # get the gift data from the db
-    giftData = await r.app['rdata'].hget("gift_data", r.match_info["gift_uuid"])
-    giftData = json.loads(giftData)
-    giftUUID = giftData.get("gift_uuid")
-    seed = giftData.get("seed")
-    fromAddress = giftData.get("from_address")
-    splitAmountRaw = giftData.get("split_amount_raw")
-    memo = giftData.get("memo")
+#     # get the gift data from the db
+#     giftData = await r.app['rdata'].hget("gift_data", r.match_info["gift_uuid"])
+#     giftData = json.loads(giftData)
+#     giftUUID = giftData.get("gift_uuid")
+#     seed = giftData.get("seed")
+#     fromAddress = giftData.get("from_address")
+#     splitAmountRaw = giftData.get("split_amount_raw")
+#     memo = giftData.get("memo")
 
-    # check if a link already exists:
-    splitID = util.get_request_ip(r) + nonce_separator + giftUUID
-    linkData = await r.app['rdata'].hget("split_gifts", splitID)
-    if linkData != None and json.loads(linkData).get("link") != None:
-        return web.HTTPTemporaryRedirect(json.loads(linkData).get("link"))
+#     # check if a link already exists:
+#     splitID = util.get_request_ip(r) + nonce_separator + giftUUID
+#     linkData = await r.app['rdata'].hget("split_gifts", splitID)
+#     if linkData != None and json.loads(linkData).get("link") != None:
+#         return web.HTTPTemporaryRedirect(json.loads(linkData).get("link"))
 
-    if giftUUID == None:
-        return web.json_response(data={"error": "gift not found!"})
+#     if giftUUID == None:
+#         return web.json_response(data={"error": "gift not found!"})
 
-    giftSeed = seed
-    giftAccount = generate_account_id(giftSeed, 0).replace("xrb_", "nano_")
-    giftPrivateKey = generate_account_private_key(giftSeed, 0)
+#     giftSeed = seed
+#     giftAccount = generate_account_id(giftSeed, 0).replace("xrb_", "nano_")
+#     giftPrivateKey = generate_account_private_key(giftSeed, 0)
 
-    # generate new seed and address:
-    paperWalletSeed = generate_seed()
-    paperWalletAccount = generate_account_id(paperWalletSeed, 0).replace("xrb_", "nano_")
-    # paperWalletPrivateKey = generate_account_private_key(paperWalletSeed, 0)
+#     # generate new seed and address:
+#     paperWalletSeed = generate_seed()
+#     paperWalletAccount = generate_account_id(paperWalletSeed, 0).replace("xrb_", "nano_")
+#     # paperWalletPrivateKey = generate_account_private_key(paperWalletSeed, 0)
 
-    global branch_api_key
+#     global branch_api_key
 
-    if branch_api_key == None:
-        return web.json_response(data={"error": "branch_api_key not set"})
+#     if branch_api_key == None:
+#         return web.json_response(data={"error": "branch_api_key not set"})
 
-    # create the branch link, then load the private key using the seed from the db:
-    branchResponse = await branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw=splitAmountRaw)
+#     # create the branch link, then load the private key using the seed from the db:
+#     branchResponse = await branch_create_link(paperWalletSeed, paperWalletAccount, memo, fromAddress, amountRaw=splitAmountRaw)
 
-    if branchResponse == None or branchResponse.status_code != 200:
-        # error creating link:
-        return web.json_response(data={"error": "error creating branch link"})
+#     if branchResponse == None or branchResponse.status_code != 200:
+#         # error creating link:
+#         return web.json_response(data={"error": "error creating branch link"})
     
-    # send to the paper wallet from the paper wallet seed:
+#     # send to the paper wallet from the paper wallet seed:
 
-    # receive any receivable funds from the paper wallet first:
+#     # receive any receivable funds from the paper wallet first:
 
-    giftWalletBalanceInt = None
+#     giftWalletBalanceInt = None
     
-    # get account_info:
-    response = await rpc.json_post({"action": "account_info", "account": giftAccount})
-    account_not_opened = False
-    if response.get("error") == "Account not found":
-        account_not_opened = True
-    elif response.get("error") != None:
-        return web.json_response(data=json.dumps({"error": response.get("error")}))
-    else:
-        giftWalletBalanceInt = int(response.get("balance"))
+#     # get account_info:
+#     response = await rpc.json_post({"action": "account_info", "account": giftAccount})
+#     account_not_opened = False
+#     if response.get("error") == "Account not found":
+#         account_not_opened = True
+#     elif response.get("error") != None:
+#         return web.json_response(data=json.dumps({"error": response.get("error")}))
+#     else:
+#         giftWalletBalanceInt = int(response.get("balance"))
 
-    frontier = None
-    if not account_not_opened:
-        frontier = response.get("frontier")
+#     frontier = None
+#     if not account_not_opened:
+#         frontier = response.get("frontier")
     
-    # get the receivable blocks:
-    receivable_resp = await rpc.json_post({"action": "receivable", "source": True, "count": 10, "include_active": True, "account": giftAccount})
-    if receivable_resp.get("blocks") == "":
-        receivable_resp["blocks"] = {}
+#     # get the receivable blocks:
+#     receivable_resp = await rpc.json_post({"action": "receivable", "source": True, "count": 10, "include_active": True, "account": giftAccount})
+#     if receivable_resp.get("blocks") == "":
+#         receivable_resp["blocks"] = {}
     
-    # receive each block:
-    for hash in receivable_resp.get("blocks").keys():
-        item = receivable_resp["blocks"][hash]
-        if (frontier != None):
-            giftWalletBalanceInt = int(item.get("amount"))
-            receiveBlock = {
-                "type": "state",
-                "account": giftAccount,
-                "previous": frontier,
-                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
-                "balance": giftWalletBalanceInt,
-                "link": hash,
-                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
-            }
-            signature = nanopy.sign(key=giftPrivateKey, block=receiveBlock)
-            receiveBlock["signature"] = signature
+#     # receive each block:
+#     for hash in receivable_resp.get("blocks").keys():
+#         item = receivable_resp["blocks"][hash]
+#         if (frontier != None):
+#             giftWalletBalanceInt = int(item.get("amount"))
+#             receiveBlock = {
+#                 "type": "state",
+#                 "account": giftAccount,
+#                 "previous": frontier,
+#                 "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+#                 "balance": giftWalletBalanceInt,
+#                 "link": hash,
+#                 "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+#             }
+#             signature = nanopy.sign(key=giftPrivateKey, block=receiveBlock)
+#             receiveBlock["signature"] = signature
             
-            resp = await rpc.process_defer(r, "fake_uid", receiveBlock, True, subtype="receive")
-            if resp.get("hash") != None:
-                frontier = resp.get("hash")
-                # totalTransferred += BigInt.parse(item.amount!)
-        else:
-            giftWalletBalanceInt = int(item.get("amount"))
-            openBlock = {
-                "type": "state",
-                "account": giftAccount,
-                "previous": "0000000000000000000000000000000000000000000000000000000000000000",
-                "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
-                "balance": giftWalletBalanceInt,
-                "link": hash,
-                "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
-            }
-            signature = nanopy.sign(key=giftPrivateKey, block=openBlock)
-            openBlock["signature"] = signature
+#             resp = await rpc.process_defer(r, "fake_uid", receiveBlock, True, subtype="receive")
+#             if resp.get("hash") != None:
+#                 frontier = resp.get("hash")
+#                 # totalTransferred += BigInt.parse(item.amount!)
+#         else:
+#             giftWalletBalanceInt = int(item.get("amount"))
+#             openBlock = {
+#                 "type": "state",
+#                 "account": giftAccount,
+#                 "previous": "0000000000000000000000000000000000000000000000000000000000000000",
+#                 "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+#                 "balance": giftWalletBalanceInt,
+#                 "link": hash,
+#                 "link_as_account": get_account_id(public_key=hash).replace("xrb_", "nano_")
+#             }
+#             signature = nanopy.sign(key=giftPrivateKey, block=openBlock)
+#             openBlock["signature"] = signature
             
-            resp = await rpc.process_defer(r, "fake_uid", openBlock, True, subtype="open")
-            if resp.get("hash") != None:
-                frontier = resp.get("hash")
-                # totalTransferred += BigInt.parse(item.amount!);
+#             resp = await rpc.process_defer(r, "fake_uid", openBlock, True, subtype="open")
+#             if resp.get("hash") != None:
+#                 frontier = resp.get("hash")
+#                 # totalTransferred += BigInt.parse(item.amount!);
     
-    # Hack that waits for blocks to be confirmed
-    time.sleep(1)
+#     # Hack that waits for blocks to be confirmed
+#     time.sleep(3)
 
 
-    # get the gift frontier:
-    giftFrontier = frontier
+#     # get the gift frontier:
+#     giftFrontier = frontier
 
-    frontiers_resp = await rpc.json_post({"action": "frontiers", "count": 1, "account": giftAccount})
-    if frontiers_resp.get("frontiers") == "":
-        giftFrontier = frontier
-    else:
-        returnedFrontiers = frontiers_resp.get("frontiers")
-        for addr in returnedFrontiers.keys():
-            giftFrontier = returnedFrontiers[addr]
-            break
+#     frontiers_resp = await rpc.json_post({"action": "frontiers", "count": 1, "account": giftAccount})
+#     if frontiers_resp.get("frontiers") == "":
+#         giftFrontier = frontier
+#     else:
+#         returnedFrontiers = frontiers_resp.get("frontiers")
+#         for addr in returnedFrontiers.keys():
+#             giftFrontier = returnedFrontiers[addr]
+#             break
     
-    # send the split amount to the paper wallet:
-    # send from giftSeed -> paperWalletAccount
+#     # send the split amount to the paper wallet:
+#     # send from giftSeed -> paperWalletAccount
 
-    if splitAmountRaw == None:
-        return web.json_response(data={"error": "splitAmountRaw is None"})
+#     if splitAmountRaw == None:
+#         return web.json_response(data={"error": "splitAmountRaw is None"})
 
-    # get account_info:
-    if giftWalletBalanceInt == None:
-        return web.json_response(data=json.dumps({"error": "giftWalletBalanceInt shouldn't be None"}))
-    elif giftWalletBalanceInt == 0:
-        # the gift wallet is empty, so we can't send anything:
-        return web.json_response(data=json.dumps({"error": "Gift wallet is empty!"}))
+#     # get account_info:
+#     if giftWalletBalanceInt == None:
+#         return web.json_response(data=json.dumps({"error": "giftWalletBalanceInt shouldn't be None"}))
+#     elif giftWalletBalanceInt == 0:
+#         # the gift wallet is empty, so we can't send anything:
+#         return web.json_response(data=json.dumps({"error": "Gift wallet is empty!"}))
 
-    newBalanceRaw = str(int(giftWalletBalanceInt) - int(splitAmountRaw))
+#     newBalanceRaw = str(int(giftWalletBalanceInt) - int(splitAmountRaw))
 
-    if newBalanceRaw == None:
-        return web.json_response(data={"error": "newBalanceRaw is None"})
-    elif int(newBalanceRaw) < 0:
-        # send whatever is left in the gift wallet:
-        newBalanceRaw = "0"
+#     if newBalanceRaw == None:
+#         return web.json_response(data={"error": "newBalanceRaw is None"})
+#     elif int(newBalanceRaw) < 0:
+#         # send whatever is left in the gift wallet:
+#         newBalanceRaw = "0"
 
-    sendBlock = {
-        "type": "state",
-        "account": giftAccount,
-        "previous": giftFrontier,
-        "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
-        "balance": newBalanceRaw,
-        "destination": paperWalletAccount,
-        "link": get_account_public_key(account_id=paperWalletAccount),
-        "link_as_account": paperWalletAccount
-    }
-    signature = nanopy.sign(key=giftPrivateKey, block=sendBlock)
-    sendBlock["signature"] = signature
+#     sendBlock = {
+#         "type": "state",
+#         "account": giftAccount,
+#         "previous": giftFrontier,
+#         "representative": "nano_38713x95zyjsqzx6nm1dsom1jmm668owkeb9913ax6nfgj15az3nu8xkx579",
+#         "balance": newBalanceRaw,
+#         "destination": paperWalletAccount,
+#         "link": get_account_public_key(account_id=paperWalletAccount),
+#         "link_as_account": paperWalletAccount
+#     }
+#     signature = nanopy.sign(key=giftPrivateKey, block=sendBlock)
+#     sendBlock["signature"] = signature
 
-    resp = await rpc.process_defer(r, "fake_uid", sendBlock, True, subtype="send")
+#     resp = await rpc.process_defer(r, "fake_uid", sendBlock, True, subtype="send")
     
-    if resp.get("hash") == None:
-        return web.json_response(data={"error": "error sending to paper wallet: " + str(resp)})
-    else:
-        # cache the paper wallet link:
-        branchLink = branchResponse.json().get("url")
+#     if resp.get("hash") == None:
+#         return web.json_response(data={"error": "error sending to paper wallet: " + str(resp)})
+#     else:
+#         # cache the paper wallet link:
+#         branchLink = branchResponse.json().get("url")
 
-        splitLinkData = json.dumps({
-            "gift_uuid": giftUUID,
-            "link": branchLink,
-            "paper_wallet_account": paperWalletAccount,
-            "paper_wallet_seed": paperWalletSeed,
-        })
-        splitID = util.get_request_ip(r) + nonce_separator + giftUUID
-        await r.app['rdata'].hset("split_gifts", splitID, splitLinkData)
-        return web.HTTPTemporaryRedirect(branchLink)
+#         splitLinkData = json.dumps({
+#             "gift_uuid": giftUUID,
+#             "link": branchLink,
+#             "paper_wallet_account": paperWalletAccount,
+#             "paper_wallet_seed": paperWalletSeed,
+#         })
+#         splitID = util.get_request_ip(r) + nonce_separator + giftUUID
+#         await r.app['rdata'].hset("split_gifts", splitID, splitLinkData)
+#         return web.HTTPTemporaryRedirect(branchLink)
 
 # async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddress):
 
@@ -844,7 +902,7 @@ async def gift_api_get(r: web.Request):
 
 
 
-async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddress):
+async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddress, requireCaptcha):
 
     giftUUID = str(uuid.uuid4())[-12:]
     giftData = json.dumps({
@@ -853,6 +911,7 @@ async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddr
         "memo": memo,
         "from_address": fromAddress,
         "gift_uuid": giftUUID,
+        "require_captcha": requireCaptcha,
     })
     await r.app['rdata'].hset("gift_data", giftUUID, giftData)
 
@@ -861,7 +920,7 @@ async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddr
     
     paperWalletAccount = generate_account_id(seed, 0).replace("xrb_", "nano_")
 
-    branchResponse = await branch_create_link("", "", memo, fromAddress, amountRaw=splitAmountRaw, giftUUID=giftUUID)
+    branchResponse = await branch_create_link("", "", memo, fromAddress, amountRaw=splitAmountRaw, giftUUID=giftUUID, requireCaptcha=requireCaptcha)
     if branchResponse == None or branchResponse.status_code != 200:
         return {"error": "error creating branch link"}
     
@@ -870,6 +929,8 @@ async def gift_split_create(r: web.Request, seed, splitAmountRaw, memo, fromAddr
 
 
 async def gift_info(r: web.Request, giftUUID, requestingAccount, requestingDeviceUUID):
+
+    log.server_logger.info(f"gift_info: {util.get_request_ip(r)} {giftUUID} {requestingAccount} {requestingDeviceUUID}")
 
     # check if the gift exists:
     giftData = await r.app['rdata'].hget("gift_data", giftUUID)
@@ -882,6 +943,7 @@ async def gift_info(r: web.Request, giftUUID, requestingAccount, requestingDevic
     
     # check if it was claimed by this user:
     # splitID = util.get_request_ip(r) + nonce_separator + giftUUID + nonce_separator + requestingAccount
+    # splitID = util.get_request_ip(r) + nonce_separator + giftUUID
     splitID = requestingDeviceUUID + nonce_separator + giftUUID
     claimed = await r.app['rdata'].hget("gift_claims", splitID)
     if claimed != None:
@@ -892,6 +954,8 @@ async def gift_info(r: web.Request, giftUUID, requestingAccount, requestingDevic
     giftWalletAccount = generate_account_id(giftWalletSeed, 0).replace("xrb_", "nano_")
 
     # giftWalletBalance = await rpc.json_post({"action": "account_balance", "account": giftWalletAccount})
+
+    # TODO: finish getting gift balance:
 
     amount = giftData.get("split_amount_raw")
     if amount == None:
@@ -911,6 +975,18 @@ async def gift_info(r: web.Request, giftUUID, requestingAccount, requestingDevic
 
 async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDeviceUUID):
 
+    log.server_logger.info(f"gift_claim: {util.get_request_ip(r)} {giftUUID} {requestingAccount} {requestingDeviceUUID}")
+    # if 'x-firebase-appcheck' in r.headers:
+    #     log.server_logger.info("APPCHECK: %s", str(r.headers.get('x-firebase-appcheck')))
+    #     # TODO: finish this:
+    #     # print(r.headers)
+    #     # app_id = await verify_app_check(r.headers.get('x-firebase-appcheck'))
+    #     #
+    #     # if app_id == None:
+    #     #     return json.dumps({"error": "gift not found!"})
+    # else:
+    #     return json.dumps({"error": "gift not found!"})
+
     # get the gift data from the db
     giftData = await r.app['rdata'].hget("gift_data", giftUUID)
     giftData = json.loads(giftData)
@@ -920,6 +996,34 @@ async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDevi
     splitAmountRaw = giftData.get("split_amount_raw")
     amountRaw = giftData.get("amount_raw")
     memo = giftData.get("memo")
+    requireCaptcha = giftData.get("require_captcha")
+
+    if 'app-version' in r.headers:
+        appVersion = r.headers.get('app-version')
+        appVersion = appVersion.replace(".", "")
+        appVersion = int(appVersion)
+        if appVersion < 60:
+            return json.dumps({"error": "App version is too old!"})
+    else:
+        return json.dumps({"error": "App version is too old!"})
+
+    if requireCaptcha == True:
+        if 'hcaptcha-token' in r.headers:
+            hcaptchaToken = r.headers.get('hcaptcha-token')
+
+            # post to hcaptcha to verify the token:
+            data = {
+                "response": hcaptchaToken,
+                "secret": hcaptcha_secret_key,
+            }
+
+            response = requests.post("https://hcaptcha.com/siteverify", data=data)
+
+            if response.json().get("success") != True:
+                return json.dumps({"error": "hcaptcha-token invalid!"})
+
+        else:
+            return json.dumps({"error": "no hcaptcha-token!"})
 
     sendAmountRaw = None
     if splitAmountRaw != None:
@@ -933,7 +1037,7 @@ async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDevi
 
     # check the gift card balance and receive any incoming funds:
     if giftUUID == None:
-        return {"error": "gift not found!"}
+        return json.dumps({"error": "gift not found!"})
 
     if requestingDeviceUUID == None or requestingDeviceUUID == "":
         return json.dumps({"error": "requestingDeviceUUID is None"})
@@ -941,6 +1045,7 @@ async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDevi
     # check if it was claimed by this user:
     # splitID = util.get_request_ip(r) + nonce_separator + giftUUID + nonce_separator + requestingAccount
     splitID = requestingDeviceUUID + nonce_separator + giftUUID
+    # splitID = util.get_request_ip(r) + nonce_separator + giftUUID
     claimed = await r.app['rdata'].hget("gift_claims", splitID)
     if claimed != None:
         return json.dumps({"error": "gift has already been claimed"})
@@ -1039,15 +1144,15 @@ async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDevi
     # send sendAmountRaw to the requester:
     # get account_info:
     if giftWalletBalanceInt == None:
-        return {"error": "giftWalletBalanceInt shouldn't be None"}
+        return json.dumps({"error": "giftWalletBalanceInt shouldn't be None"})
     elif giftWalletBalanceInt == 0:
         # the gift wallet is empty, so we can't send anything:
-        return {"error": "Gift wallet is empty!"}
+        return json.dumps({"error": "Gift wallet is empty!"})
 
     newBalanceRaw = str(int(giftWalletBalanceInt) - int(sendAmountRaw))
 
     if newBalanceRaw == None:
-        return {"error": "newBalanceRaw is None"}
+        return json.dumps({"error": "newBalanceRaw is None"})
     elif int(newBalanceRaw) < 0:
         # send whatever is left in the gift wallet:
         newBalanceRaw = "0"
@@ -1719,8 +1824,8 @@ async def init_app():
     cors.add(funding_resource.add_route("GET", funding_api))
 
     # gift endpoints:
-    gift_resource = cors.add(app.router.add_resource("/gift/{gift_uuid}"))
-    cors.add(gift_resource.add_route("GET", gift_api_get))
+    # gift_resource = cors.add(app.router.add_resource("/gift/{gift_uuid}"))
+    # cors.add(gift_resource.add_route("GET", gift_api_get))
 
     app.on_startup.append(open_redis)
     app.on_shutdown.append(close_redis)
