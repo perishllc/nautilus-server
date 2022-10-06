@@ -48,6 +48,7 @@ def coingecko():
             exc_type, exc_obj, exc_tb = sys.exc_info()
             print('exception', exc_type, exc_obj, exc_tb.tb_lineno)
             print("Failed to get price for NANO-"+currency.upper()+" Error")
+    
     # Convert to VES
     # usdprice = float(rdata.hget("prices", "coingecko:nano-usd").decode('utf-8'))
     # bolivarprice = float(rdata.hget("prices", "dolartoday:usd-ves").decode('utf-8'))

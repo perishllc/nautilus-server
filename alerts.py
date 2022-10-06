@@ -111,7 +111,7 @@ ACTIVE_FUNDING = [
     },
     {
         "id": 1,
-        "active": False,
+        "active": True,
         "show_on_ios": False,
         "address": "nano_1u844awm5ch3ktwwzpzjfchj54ay5o6a7kyop5jycue7bw5jr117m15tx8oa",
         "goal_amount_raw": "500000000000000000000000000000000",
@@ -137,7 +137,7 @@ ACTIVE_FUNDING = [
     },
     {
         "id": 3,
-        "active": True,
+        "active": False,
         "show_on_ios": False,
         "address": "nano_14qojirkhwgekfpf1jbqfd58ks7t6rrjtzuaetytkxmmuhdgx5cmjhgr5wu5",
         "goal_amount_raw": "200000000000000000000000000000000",
@@ -188,7 +188,7 @@ ACTIVE_FUNDING = [
     },
     {
         "id": 7,
-        "active": True,
+        "active": False,
         "show_on_ios": False,
         "address": "nano_13ddtgi44o3on9j1d6ughjakoe3s9m515q8fasissky7snsomf93cywsiq68",
         "goal_amount_raw": "500000000000000000000000000000000",
@@ -225,17 +225,30 @@ ACTIVE_FUNDING = [
             "long_description": "This would cache memos and requests (Encrypted still) on the server until the recipient's device confirms that they've received the message",
         },
     },
+    # {
+    #     "id": 10,
+    #     "active": True,
+    #     "show_on_ios": False,
+    #     "address": "nano_1rw4ybt4hagog4uyhqd7mnaogeu6e4ik4kdswfbh9g3zfiyp1hz968mufyni",
+    #     "goal_amount_raw": "1000000000000000000000000000000000",
+    #     "current_amount_raw": "0",
+    #     "en": {
+    #         "title": "Apple Watch Support (iOS)",
+    #         "short_description": "Get notifications on your Apple Watch!",
+    #         "long_description": "This one is pretty technically complicated and would be a lot of work to make it happen, since flutter doesn't have proper apple watch support yet I'd have to write it as a swift extension. I also don't own an apple watch to test with which adds to the cost.",
+    #     },
+    # },
     {
         "id": 10,
         "active": True,
         "show_on_ios": False,
         "address": "nano_1rw4ybt4hagog4uyhqd7mnaogeu6e4ik4kdswfbh9g3zfiyp1hz968mufyni",
-        "goal_amount_raw": "1000000000000000000000000000000000",
+        "goal_amount_raw": "500000000000000000000000000000000",
         "current_amount_raw": "0",
         "en": {
-            "title": "Apple Watch Support (iOS)",
-            "short_description": "Get notifications on your Apple Watch!",
-            "long_description": "This one is pretty technically complicated and would be a lot of work to make it happen, since flutter doesn't have proper apple watch support yet I'd have to write it as a swift extension. I also don't own an apple watch to test with which adds to the cost.",
+            "title": "Artist Fund",
+            "short_description": "Help pay for a new logo and other assets",
+            "long_description": "This is to help pay for a graphic designer to make a new logo or re-design the current one.",
         },
     },
     {

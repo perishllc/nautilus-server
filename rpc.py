@@ -81,10 +81,14 @@ class RPC:
             r.app['cur_prefs'][ws.id] = await r.app['rdata'].hget(ws.id, "currency")
             await r.app['rdata'].hset(ws.id, "last-connect", float(time.time()))
             price_cur = await r.app['rdata'].hget("prices", f"{self.price_prefix}-" + r.app['cur_prefs'][ws.id].lower())
-            price_btc = await r.app['rdata'].hget("prices", f"{self.price_prefix}-btc")
+            price_xmr = await r.app['rdata'].hget("prices", f"{self.price_prefix}-xmr")
+            if price_cur == None:
+                price_cur = 1
+            if price_xmr == None:
+                price_xmr = 10
             response['currency'] = r.app['cur_prefs'][ws.id].lower()
             response['price'] = float(price_cur)
-            response['btc'] = float(price_btc)
+            response['xmr'] = float(price_xmr)
             if self.banano_mode:
                 response['nano'] = float(await r.app['rdata'].hget("prices", f"{self.price_prefix}-nano"))
             response['pending_count'] = await self.get_receivable_count(r, account, uid = ws.id)
@@ -124,14 +128,14 @@ class RPC:
             await r.app['rdata'].hset(ws.id, "last-connect", float(time.time()))
             response['uuid'] = ws.id
             price_cur = await r.app['rdata'].hget("prices", f"{self.price_prefix}-" + r.app['cur_prefs'][ws.id].lower())
-            price_btc = await r.app['rdata'].hget("prices", f"{self.price_prefix}-btc")
+            price_xmr = await r.app['rdata'].hget("prices", f"{self.price_prefix}-xmr")
             if price_cur == None:
                 price_cur = 1
-            if price_btc == None:
-                price_btc = 10
+            if price_xmr == None:
+                price_xmr = 10
             response['currency'] = r.app['cur_prefs'][ws.id].lower()
             response['price'] = float(price_cur)
-            response['btc'] = float(price_btc)
+            response['xmr'] = float(price_xmr)
             if self.banano_mode:
                 response['nano'] = float(await r.app['rdata'].hget("prices", f"{self.price_prefix}-nano"))
             response['pending_count'] = await self.get_receivable_count(r, account)

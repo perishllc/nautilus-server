@@ -1719,9 +1719,7 @@ async def send_prices(app):
         try:
             if 'clients' in app and len(app['clients']):
                 log.server_logger.info('pushing price data to %d connections', len(app['clients']))
-                btc = float(await app['rdata'].hget("prices", f"{price_prefix}-btc"))
-                if banano_mode:
-                    nano = float(await app['rdata'].hget("prices", f"{price_prefix}-nano"))
+                xmr = float(await app['rdata'].hget("prices", f"{price_prefix}-xmr"))
                 for client, ws in list(app['clients'].items()):
                     try:
                         try:
@@ -1733,10 +1731,8 @@ async def send_prices(app):
                         response = {
                             'currency':currency.lower(),
                             "price":str(price),
-                            'btc':str(btc)
+                            'xmr':str(xmr)
                         }
-                        if banano_mode:
-                            response['nano'] = str(nano)
                         await ws.send_str(json.dumps(response))
                     except Exception:
                         log.server_logger.exception('error pushing prices for client %s', client)
