@@ -263,7 +263,7 @@ ACTIVE_FUNDING = [
             "short_description": "Just a *minor* rewrite",
             "long_description": "This involves rewriting major sections of the app to use more cross platform libraries, and may not be feasible / easier to just start from scratch.",
         },
-    }
+    },
 ]
 
 def gen_for_locales(message):

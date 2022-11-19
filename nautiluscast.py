@@ -1181,7 +1181,7 @@ async def gift_claim(r: web.Request, giftUUID, requestingAccount, requestingDevi
 
     return json.dumps({"success": True})
 
-async def callback_ws(app: web.Application, data: dict):   
+async def callback_ws(app: web.Application, data: dict):
     if 'block' in data and 'link_as_account' in data['block']:
         account = data['block']['link_as_account']
         if app['subscriptions'].get(account):
@@ -1545,86 +1545,86 @@ async def push_payment_memo(r, account, requesting_account, memo_enc, block, loc
         await fcm.send_message(message)
     return None
 
-async def callback_retro(request_json, app):
-    try:
-        hash = request_json['hash']
-        log.server_logger.debug(f"callback received {hash}")
-        # request_json['block'] = json.loads(request_json['block'])
+# async def callback_retro(request_json, app):
+#     try:
+#         hash = request_json['hash']
+#         log.server_logger.debug(f"callback received {hash}")
+#         # request_json['block'] = json.loads(request_json['block'])
 
-        account = request_json['block']['link_as_account']
+#         account = request_json['block']['link_as_account']
         
-        # hack bc the structure is weird:
-        r = Object()
-        r.app = app
+#         # hack bc the structure is weird:
+#         r = Object()
+#         r.app = app
 
-        # Push FCM notification if this is a send
-        if fcm_api_key is None:
-            return web.HTTPOk()
-        fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
-        if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
-            return web.HTTPOk()
-        message = {
-            "action":"block",
-            "hash":request_json['block']['previous']
-        }
-        response = await rpc.json_post(message)
-        if response is None:
-            return web.HTTPOk()
-        # See if this block was already pocketed
-        cached_hash = await r.app['rdata'].get(f"link_{hash}")
-        if cached_hash is not None:
-            return web.HTTPOk()
-        prev_data = response
-        prev_data = prev_data['contents'] = json.loads(prev_data['contents'])
-        prev_balance = int(prev_data['contents']['balance'])
-        cur_balance = int(request_json['block']['balance'])
-        send_amount = prev_balance - cur_balance
+#         # Push FCM notification if this is a send
+#         if fcm_api_key is None:
+#             return web.HTTPOk()
+#         fcm_tokens_v2 = set(await get_fcm_tokens(account, r, v2=True))
+#         if (fcm_tokens_v2 is None or len(fcm_tokens_v2) == 0):
+#             return web.HTTPOk()
+#         message = {
+#             "action":"block",
+#             "hash":request_json['block']['previous']
+#         }
+#         response = await rpc.json_post(message)
+#         if response is None:
+#             return web.HTTPOk()
+#         # See if this block was already pocketed
+#         cached_hash = await r.app['rdata'].get(f"link_{hash}")
+#         if cached_hash is not None:
+#             return web.HTTPOk()
+#         prev_data = response
+#         prev_data = prev_data['contents'] = json.loads(prev_data['contents'])
+#         prev_balance = int(prev_data['contents']['balance'])
+#         cur_balance = int(request_json['block']['balance'])
+#         send_amount = prev_balance - cur_balance
 
-        min_raw_receive = None
-        # check cached pref for min receive amount
-        min_raw_receive = await r.app['rdata'].hget("account_min_raw", account)
+#         min_raw_receive = None
+#         # check cached pref for min receive amount
+#         min_raw_receive = await r.app['rdata'].hget("account_min_raw", account)
 
-        if min_raw_receive is None:
-            # min_raw_receive = "1000000000000000000000000"
-            min_raw_receive = "0"
+#         if min_raw_receive is None:
+#             # min_raw_receive = "1000000000000000000000000"
+#             min_raw_receive = "0"
 
-        # get username if it exists:
-        from_account = request_json['block']['account']
-        shorthand_account = await r.app['rdata'].hget("usernames", f"{from_account}")
-        if shorthand_account == None:
-            # set username to abbreviated account name:
-            shorthand_account = from_account[0:12]
-        else:
-            shorthand_account = "@" + shorthand_account
+#         # get username if it exists:
+#         from_account = request_json['block']['account']
+#         shorthand_account = await r.app['rdata'].hget("usernames", f"{from_account}")
+#         if shorthand_account == None:
+#             # set username to abbreviated account name:
+#             shorthand_account = from_account[0:12]
+#         else:
+#             shorthand_account = "@" + shorthand_account
 
-        if int(send_amount) >= int(min_raw_receive):
-            # This is a send, push notifications
-            fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
-            # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
-            notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
-            notification_body = f"Open Nautilus to view this transaction."
-            for t2 in fcm_tokens_v2:
-                message = aiofcm.Message(
-                    device_token = t2,
-                    notification = {
-                        "title":notification_title,
-                        "body":notification_body,
-                        "sound":"default",
-                        "tag":account
-                    },
-                    data = {
-                        "click_action": "FLUTTER_NOTIFICATION_CLICK",
-                        "account": account,
-                        # "memo": request_json['block']['memo']
-                    },
-                    priority=aiofcm.PRIORITY_HIGH,
-                    content_available=True
-                )
-                await fcm.send_message(message)
-        return web.HTTPOk()
-    except Exception:
-        log.server_logger.exception("received exception in callback")
-        return web.HTTPInternalServerError(reason=f"Something went wrong {str(sys.exc_info())}")
+#         if int(send_amount) >= int(min_raw_receive):
+#             # This is a send, push notifications
+#             fcm = aiofcm.FCM(fcm_sender_id, fcm_api_key)
+#             # Send notification with generic title, send amount as body. App should have localizations and use this information at its discretion
+#             notification_title = f"Received {util.raw_to_nano(send_amount)} {'NANO' if not banano_mode else 'BANANO'} from {shorthand_account}"
+#             notification_body = f"Open Nautilus to view this transaction."
+#             for t2 in fcm_tokens_v2:
+#                 message = aiofcm.Message(
+#                     device_token = t2,
+#                     notification = {
+#                         "title":notification_title,
+#                         "body":notification_body,
+#                         "sound":"default",
+#                         "tag":account
+#                     },
+#                     data = {
+#                         "click_action": "FLUTTER_NOTIFICATION_CLICK",
+#                         "account": account,
+#                         # "memo": request_json['block']['memo']
+#                     },
+#                     priority=aiofcm.PRIORITY_HIGH,
+#                     content_available=True
+#                 )
+#                 await fcm.send_message(message)
+#         return web.HTTPOk()
+#     except Exception:
+#         log.server_logger.exception("received exception in callback")
+#         return web.HTTPInternalServerError(reason=f"Something went wrong {str(sys.exc_info())}")
 
 async def callback(r : web.Request):
     try:
@@ -1634,6 +1634,19 @@ async def callback(r : web.Request):
         request_json['block'] = json.loads(request_json['block'])
 
         account = request_json['block']['link_as_account']
+
+
+        # # update clients over the websocket connection:
+        # sometimes the websocket subscription can be lost or not go through, so we send it again from the http callback
+        if account != None:
+            if r.app['subscriptions'].get(account):
+                log.server_logger.info("Pushing to clients %s", str(r.app['subscriptions'][account]))
+                for sub in r.app['subscriptions'][account]:
+                    if sub in r.app['clients']:
+                        if request_json['block']['subtype'] == 'send':
+                            request_json['is_send'] = 'true'
+                            await r.app['clients'][sub].send_str(json.dumps(request_json))
+
 
         # Push FCM notification if this is a send
         if fcm_api_key is None:
@@ -1719,7 +1732,8 @@ async def send_prices(app):
         try:
             if 'clients' in app and len(app['clients']):
                 log.server_logger.info('pushing price data to %d connections', len(app['clients']))
-                xmr = float(await app['rdata'].hget("prices", f"{price_prefix}-xmr"))
+                # xmr = float(await app['rdata'].hget("prices", f"{price_prefix}-xmr"))
+                xmr = float(1.0)
                 for client, ws in list(app['clients'].items()):
                     try:
                         try:
@@ -1841,9 +1855,7 @@ def main():
     # Start web/ws server
     async def start():
         runner = web.AppRunner(app)
-        tasks = [
-
-        ]
+        tasks = []
         await runner.setup()
         if app_path is not None:
             site = web.UnixSite(runner, app_path)
